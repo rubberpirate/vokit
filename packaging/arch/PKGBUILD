@@ -1,0 +1,40 @@
+# Build using scripts/build-arch-package.sh from the source checkout.
+pkgname=vivo-office-kit-linux
+pkgver=0.1.0
+pkgrel=1
+pkgdesc='Independent native Linux desktop companion for compatible vivo phones'
+arch=('x86_64' 'aarch64')
+license=('LicenseRef-Unspecified')
+depends=('qt6-base' 'qt6-multimedia' 'qt6-svg' 'qt6-wayland' 'ffmpeg' 'qrencode' 'wl-clipboard' 'pipewire-audio' 'xdg-utils')
+install="$pkgname.install"
+backup=('etc/modprobe.d/vivo-phone-camera.conf' 'etc/modules-load.d/vivo-phone-camera.conf')
+makedepends=('go>=1.23' 'cmake' 'pkgconf' 'gcc' 'make')
+checkdepends=('python')
+optdepends=('v4l2loopback-dkms: publish a virtual webcam (requires matching kernel headers)')
+source=("vivo-office-kit-linux-${pkgver}.tar.gz")
+# Locally generated source snapshot; the wrapper replaces this with its SHA-256.
+sha256sums=('SKIP')
+
+build() {
+    cd "$srcdir/vivo-office-kit-linux-${pkgver}"
+    export CGO_ENABLED=0
+    export GOTOOLCHAIN=local
+    export GOCACHE="$srcdir/go-build-cache"
+    export GOMODCACHE="$srcdir/go-module-cache"
+    # Keep makepkg's source tree removable on the next clean build.
+    export GOFLAGS='-modcacherw'
+    make build desktop
+}
+
+check() {
+    cd "$srcdir/vivo-office-kit-linux-${pkgver}"
+    export GOTOOLCHAIN=local GOCACHE="$srcdir/go-build-cache" GOMODCACHE="$srcdir/go-module-cache"
+    export GOFLAGS='-modcacherw'
+    go test ./...
+    make check-packaging
+}
+
+package() {
+    cd "$srcdir/vivo-office-kit-linux-${pkgver}"
+    make PREFIX=/usr DESTDIR="$pkgdir" install-files install-system-config
+}

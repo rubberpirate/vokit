@@ -1,0 +1,2 @@
+# Grant only the active local session access to this named virtual camera.
+SUBSYSTEM=="video4linux", KERNEL=="video[0-9]*", ATTR{name}=="Vivo Phone", TAG+="uaccess"

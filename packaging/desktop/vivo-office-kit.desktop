@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=vivo Office Kit for Linux
+Comment=Connect your vivo phone, transfer files, mirror its screen and share its camera
+Exec=vivo-desktop
+TryExec=vivo-desktop
+Icon=vivo-office-kit
+Terminal=false
+Categories=Utility;
+StartupNotify=true
