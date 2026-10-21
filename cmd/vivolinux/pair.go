@@ -59,7 +59,7 @@ func parsePairOptions(args []string) (pairOptions, error) {
 	flags.StringVar(&options.receiveDir, "receive-dir", "", "automatically receive phone Share files into this directory")
 	flags.StringVar(&options.stateDir, "state-dir", "build/pairing", "private pairing state directory")
 	flags.StringVar(&options.pin, "phone-cert-sha256", "", "verified phone certificate SHA-256 fingerprint")
-	flags.BoolVar(&options.trustScanned, "trust-scanned-phone", false, "explicitly trust first certificate from --phone after this scan; pin it for this session")
+	flags.BoolVar(&options.trustScanned, "trust-scanned-phone", false, "trust the phone returned by this approved QR scan; pin each data connection")
 	flags.StringVar(&phone, "phone", "", "only connect to this phone LAN IP from the scan result")
 	flags.StringVar(&options.localIP, "local-ip", "", "local LAN IP (otherwise automatically selected)")
 	flags.DurationVar(&options.duration, "duration", 5*time.Minute, "control test duration after negotiation")
@@ -100,8 +100,8 @@ func parsePairOptions(args []string) (pairOptions, error) {
 			return options, errors.New("local-ip must be a private LAN address")
 		}
 	}
-	if options.trustScanned && (!options.phone.IsValid() || options.pin != "") {
-		return options, errors.New("trust-scanned-phone requires --phone and cannot be combined with an existing pin")
+	if options.trustScanned && options.pin != "" {
+		return options, errors.New("trust-scanned-phone cannot be combined with an existing pin")
 	}
 	if (options.download == "") != (options.output == "") || options.filePage < 0 {
 		return options, errors.New("download requires both --download and --output; file-page must be nonnegative")
@@ -303,12 +303,13 @@ func runPair(ctx context.Context, args []string) error {
 			phoneAddress = address
 			break
 		}
+		pinned := candidate.CertificatePin() != ""
 		candidate.Close()
-		if options.trustScanned {
+		if options.trustScanned && pinned {
 			return err
-		} // Never refresh first-use trust after failure.
+		} // Once a certificate was accepted, a fresh scan is needed after failure.
 		lastErr = err
-		if pin == "" {
+		if !options.trustScanned && pin == "" {
 			fingerprint, inspectErr := vivo.InspectCertificate(ctx, address)
 			if inspectErr == nil {
 				fmt.Fprintln(os.Stderr, "Unverified phone certificate SHA-256:", fingerprint)
@@ -320,7 +321,10 @@ func runPair(ctx context.Context, args []string) error {
 		if lastErr != nil {
 			return lastErr
 		}
-		return errors.New("scan result did not include the requested phone IP")
+		if options.phone.IsValid() {
+			return errors.New("scan result did not include the requested phone IP")
+		}
+		return errors.New("no reachable phone was returned by this QR scan")
 	}
 	defer client.Close()
 	emit(vivo.Event{Time: time.Now().UTC(), Stage: "phone_negotiated", Capabilities: capabilities})

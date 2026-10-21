@@ -538,12 +538,11 @@ class OfficeWindow(Adw.ApplicationWindow):
         container.append(heading)
         page = Adw.PreferencesPage()
         page.add_css_class("settings-content")
-        connection = Adw.PreferencesGroup(title="Connect your phone", description="Use the phone's private Wi-Fi address and approve the pairing QR in Office Kit.")
-        self.phone_entry = Adw.EntryRow(title="Phone Wi-Fi IP", text=self.preferences.get("phone", ""))
-        connection.add(self.phone_entry)
-        self.trust_switch = Adw.SwitchRow(title="Trust the scanned phone for this connection",
-            subtitle="Approve the phone after scanning. This choice is never remembered.", active=False)
-        connection.add(self.trust_switch)
+        connection = Adw.PreferencesGroup(title="Connect your phone", description="Scan the pairing QR in Office Kit and approve the connection on your phone. No IP address or vivo account is needed.")
+        advanced = Adw.ExpanderRow(title="Advanced connection", subtitle="Optional phone address override")
+        self.phone_entry = Adw.EntryRow(title="Phone IP override (optional)", text=self.preferences.get("manual_phone", ""))
+        advanced.add_row(self.phone_entry)
+        connection.add(advanced)
         self.clipboard_switch = Adw.SwitchRow(title="Share plain-text clipboard", active=bool(self.preferences.get("clipboard", False)))
         self.notification_switch = Adw.SwitchRow(title="Phone and connection notifications",
             subtitle="Forward phone notifications to this desktop. Applies after reconnecting.", active=bool(self.preferences.get("notifications", True)))
@@ -582,7 +581,11 @@ class OfficeWindow(Adw.ApplicationWindow):
 
     def _navigate(self, destination):
         if destination == "connect":
-            destination = "settings"
+            if self.connected:
+                self._navigate("files")
+            else:
+                self._start_pair()
+            return
         self.pages.set_visible_child_name(destination)
         if destination in self.nav_buttons:
             self.nav_buttons[destination].set_active(True)
@@ -1067,22 +1070,21 @@ class OfficeWindow(Adw.ApplicationWindow):
             self.backend.disconnect()
             self.connection_status.set_text("Disconnecting…")
         else:
-            self._navigate("settings")
+            self._start_pair()
 
     def _start_pair(self):
         if self.owned or self.external_session:
             self.connection_status.set_text("Use the existing connection, or disconnect its owner before pairing again.")
             return
-        try:
-            address = ipaddress.ip_address(self.phone_entry.get_text().strip())
-            if not address.is_private or address.is_loopback or address.is_unspecified:
-                raise ValueError
-        except ValueError:
-            self.connection_status.set_text("Enter your phone's private Wi-Fi IP address in Settings.")
-            return
-        if not self.trust_switch.get_active():
-            self.connection_status.set_text("Enable trust for this connection, then approve your phone after scanning.")
-            return
+        phone = self.phone_entry.get_text().strip()
+        if phone:
+            try:
+                address = ipaddress.ip_address(phone)
+                if not address.is_private or address.is_loopback or address.is_unspecified:
+                    raise ValueError
+            except ValueError:
+                self.connection_status.set_text("Enter a private IP override, or leave it empty to discover the scanned phone.")
+                return
         receive = self.receive_entry.get_text().strip()
         if not os.path.isabs(receive):
             self.connection_status.set_text("Choose an absolute receive folder in Settings.")
@@ -1093,13 +1095,12 @@ class OfficeWindow(Adw.ApplicationWindow):
         self.connection_status.set_text("Creating a pairing QR…")
         self.owned = True
         try:
-            self.backend.pair(str(address), True, receive,
+            self.backend.pair(phone, True, receive,
                 self.clipboard_switch.get_active(), self.notification_switch.get_active(),
                 self._pair_event, self._pair_exited)
         except (OSError, RuntimeError, ValueError):
             self.owned = False
             self.connection_status.set_text("The connection could not start. Check the installed backend.")
-        self.trust_switch.set_active(False)
         self._update_controls()
 
     def _pair_event(self, event):
@@ -1173,7 +1174,7 @@ class OfficeWindow(Adw.ApplicationWindow):
     def _save_preferences(self):
         if not hasattr(self, "receive_entry"):
             return
-        for key, value in (("phone", self.phone_entry.get_text().strip()),
+        for key, value in (("manual_phone", self.phone_entry.get_text().strip()),
                            ("receive_dir", self.receive_entry.get_text().strip()),
                            ("clipboard", self.clipboard_switch.get_active()),
                            ("notifications", self.notification_switch.get_active())):
@@ -1348,11 +1349,9 @@ class OfficeApplication(Adw.Application):
             window.category = ""
             assert "--path" in window._listing_arguments(0)
             window.category = "recent"
-            assert window.trust_switch.get_active() is False
-            window.trust_switch.set_active(True)
+            assert window.phone_entry.get_text() == ""
             window._save_preferences()
             assert "trust" not in self.settings.values
-            window.trust_switch.set_active(False)
             window._apply_theme("light")
             assert not Adw.StyleManager.get_default().get_dark()
             window._apply_theme("dark")

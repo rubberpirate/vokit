@@ -70,6 +70,18 @@ class BackendTests(unittest.TestCase):
         self.assertEqual(loaded.get("phone"), "192.168.1.12")
         self.assertIsNone(loaded.get("trust"))
 
+    def test_pair_discovers_phone_without_an_ip_argument(self):
+        backend = Backend(self.cli('import sys,json\nprint(json.dumps({"stage":"arguments","has_phone":"--phone" in sys.argv,"trust":"--trust-scanned-phone" in sys.argv}),flush=True)\n'))
+        events = []
+        try:
+            value, error = self.wait(lambda done: backend.pair("", True, str(self.root / "Receive files"), False, False, events.append, lambda code: done({"exit":code}, None)))
+            self.assertIsNone(error)
+            self.assertEqual(value["exit"], 0)
+            self.assertFalse(events[0]["has_phone"])
+            self.assertTrue(events[0]["trust"])
+        finally:
+            backend.close()
+
     def test_pair_events_and_receive_folder_survive_spaces(self):
         backend = Backend(self.cli('import sys,json\nprint(json.dumps({"stage":"control_connected","count":len(sys.argv)}),flush=True)\n'))
         events = []
@@ -128,6 +140,29 @@ class BatchDispatchTests(unittest.TestCase):
             if condition(): return True
             time.sleep(.003)
         return False
+
+    def test_connect_opens_pairing_without_ip_or_trust_toggle(self):
+        from .app import Adw, OfficeWindow, _TestBackend, _TestSettings
+        class Backend(_TestBackend):
+            def pair(self, *args): self.pair_arguments = args
+        backend = Backend()
+        app = Adw.Application(application_id="org.vokit.QRConnectTest")
+        settings = _TestSettings()
+        settings.set("phone", "192.168.1.12")  # Legacy test IP must not constrain discovery.
+        app.backend, app.settings = backend, settings
+        app.register(None)
+        window = OfficeWindow(app)
+        try:
+            self.assertEqual(window.phone_entry.get_text(), "")
+            window._connection_action()
+            self.assertTrue(window.owned)
+            self.assertEqual(backend.pair_arguments[0], "")
+            self.assertTrue(backend.pair_arguments[1])
+            self.assertNotIn("trust", settings.values)
+        finally:
+            window.shutdown()
+            window.destroy()
+            backend.close()
 
     def test_send_queue_and_batch_download_use_all_selected_files(self):
         from unittest.mock import patch

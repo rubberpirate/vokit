@@ -16,7 +16,6 @@ func TestPairRejectsInvalidOptionsBeforeNetwork(t *testing.T) {
 		{"--duration", "0s"}, {"--duration", "25h"}, {"unexpected"},
 		{"--local-ip", "not-an-ip"}, {"--phone", "localhost"},
 		{"--phone", "::ffff:10.1.2.3%wlan0"},
-		{"--trust-scanned-phone"},
 		{"--receive-dir", "relative"}, {"--receive-dir", "/"}, {"--receive-dir", "/tmp/../unsafe"},
 		{"--phone", "10.1.2.3", "--trust-scanned-phone", "--phone-cert-sha256", strings.Repeat("a", 64)},
 	} {
@@ -28,8 +27,8 @@ func TestPairRejectsInvalidOptionsBeforeNetwork(t *testing.T) {
 	if err != nil || options.phone.String() != "10.1.2.3" {
 		t.Fatalf("valid options rejected: %v", err)
 	}
-	options, err = parsePairOptions([]string{"--phone", "10.1.2.3", "--trust-scanned-phone"})
-	if err != nil || !options.trustScanned {
+	options, err = parsePairOptions([]string{"--trust-scanned-phone"})
+	if err != nil || !options.trustScanned || options.phone.IsValid() {
 		t.Fatal("explicit first-use policy rejected", err)
 	}
 }

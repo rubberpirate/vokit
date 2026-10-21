@@ -19,7 +19,7 @@ import (
 const usage = `vivolinux: experimental native vivo LAN client and ADB/scrcpy fallback
 
 Usage:
-  vivolinux pair [--phone LAN_IP] [--phone-cert-sha256 HEX] [--duration 5m]
+  vivolinux pair [--trust-scanned-phone | --phone-cert-sha256 HEX] [--phone LAN_IP] [--duration 5m]
                  [--persistent] [--clipboard] [--notifications] [--file-access] [--receive-dir DIRECTORY]
                  [--list-files PHONE_DIRECTORY] [--mirror-native]
   vivolinux native-status [--socket PATH]
@@ -42,12 +42,13 @@ Usage:
 Flags must precede positional arguments. Doctor and device lists emit JSON.
 The daemon stays in the foreground. The GTK desktop owns its paired background session.
 ADB fallback commands require separately installed adb/scrcpy and authorized USB debugging.
-Pair generates a private QR image for anonymous India-region cloud/LAN pairing.
+Pair discovers the phone from a fresh QR scan; --phone is an optional address filter.
+The QR bootstrap currently uses the India-region vivo rendezvous service.
 Install qrencode; clipboard/notifications use make desktop's GTK helper. File commands
 use the active native session and phone permission. The GTK frontend uses GStreamer for preview.
-Push/pull explicitly write files and may overwrite existing files. Automatic discovery,
-rich/file clipboard and phone notification forwarding remain planned; connection
-notifications, opt-in plain-text clipboard and virtual webcam output are implemented.
+Push/pull explicitly write files and may overwrite existing files.
+Rich/file clipboard remains planned; phone and connection notifications,
+plain-text clipboard and virtual webcam output are implemented.
 Mirror uses scrcpy's normal controls; camera displays a preview (Android 12+ required).
 Remote paths allow letters, digits, spaces, / . _ - and must not contain '..' segments.
 This is not a complete vivo Office Kit port and cannot guarantee every phone or laptop.

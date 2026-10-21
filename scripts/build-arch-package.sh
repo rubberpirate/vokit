@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.."
-version=0.5.0
+version=0.5.1
 output=${1:-build/arch-package}
 mkdir -p -- "$output"
 output=$(realpath -- "$output")
