@@ -1,0 +1,61 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Build and test source and Arch package
+        run: |
+          docker run --rm -v "$PWD:/work" -w /work archlinux:base-devel bash -euc '
+            pacman -Syu --noconfirm --needed git python dbus sudo
+            useradd --create-home builder
+            echo "builder ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/builder
+            chown -R builder:builder /work
+            sudo -u builder dbus-run-session -- bash -euc "
+              ./scripts/build-arch-package.sh
+              cd build/arch-package
+              makepkg --syncdeps --noconfirm
+            "
+          '
+          version=$(sed -n 's/^pkgver=//p' packaging/arch/PKGBUILD)
+          test "$GITHUB_REF_NAME" = "v$version"
+          cd build/arch-package
+          sha256sum "vokit-$version.tar.gz" "vokit-$version-1-x86_64.pkg.tar.zst" > SHA256SUMS
+      - name: Publish release downloads
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          cat > /tmp/vokit-release-notes.md <<'EOF'
+          Native Linux companion for compatible vivo phones, with QR pairing, file transfers, media streaming, clipboard sync, phone mirroring and camera sharing. Includes a background tray icon with connection status and shortcuts.
+
+          **Downloads**
+
+          - `vokit-<version>.tar.gz`: application source and installation script for supported Linux distributions. Extract it and run `./install.sh` as your desktop user.
+          - `vokit-<version>-1-x86_64.pkg.tar.zst`: installable Arch Linux / CachyOS package. Run `sudo pacman -U ./vokit-*.pkg.tar.zst`.
+          - `SHA256SUMS`: checksums for both downloads; verify with `sha256sum -c SHA256SUMS`.
+
+          Webcam output additionally needs v4l2loopback and matching kernel headers. See the README for setup and supported system requirements.
+
+          This is an early prerelease. Vivo-account login, Notes/cloud sync and Remote PC are incomplete. Phone microphone sharing and notification handoff need further device testing. The release was built and tested on Arch Linux x86_64; compatibility with every laptop or vivo phone is not established.
+          EOF
+          gh release create "$GITHUB_REF_NAME" --verify-tag --draft --prerelease \
+            --title "VOkit $GITHUB_REF_NAME" --notes-file /tmp/vokit-release-notes.md \
+            build/arch-package/vokit-*.tar.gz build/arch-package/vokit-*.pkg.tar.zst \
+            build/arch-package/SHA256SUMS
+          gh release edit "$GITHUB_REF_NAME" --draft=false
