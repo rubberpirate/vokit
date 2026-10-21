@@ -128,3 +128,15 @@ func (l *categoryLister) ListMediaCategory(_ context.Context, _ *vivo.Session, c
 	l.page = page
 	return vivo.FilePage{DataList: []vivo.FileEntry{{FileName: "fixture.jpg", SavePath: "/storage/fixture.jpg", FileSize: 3}}}, nil
 }
+
+func TestStreamCommandRequiresSelectedPathWithoutOutput(t *testing.T) {
+	_, request, err := parseNativeOptions([]string{"stream", "--remote", "/storage/emulated/0/clip.mp4", "--category", "videos", "--page", "2"})
+	if err != nil || request.Method != "stream" || request.Category != "videos" || request.Page != 2 || request.Output != "" {
+		t.Fatal("invalid stream command", err)
+	}
+	for _, args := range [][]string{{"stream"}, {"stream", "--remote", "/a/../clip.mp4"}, {"stream", "--remote", "/clip.mp4", "--output", "/tmp/cache"}} {
+		if _, _, err := parseNativeOptions(args); err == nil {
+			t.Fatal("invalid stream selection accepted")
+		}
+	}
+}

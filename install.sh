@@ -28,7 +28,7 @@ fi
 . /etc/os-release
 family=" ${ID:-} ${ID_LIKE:-} "
 if [[ "$family" == *arch* || "$family" == *cachyos* ]]; then
-    packages=(go make python-gobject python-cairo gtk4 libadwaita gstreamer gst-plugins-base gst-plugins-good gst-plugins-bad gst-libav qrencode wl-clipboard pipewire-audio xdg-utils)
+    packages=(go make python-gobject python-cairo gtk4 libadwaita gstreamer gst-plugins-base gst-plugins-good gst-plugins-bad gst-libav gst-plugin-gtk4 qrencode wl-clipboard pipewire-audio xdg-utils)
     pkgcmd=(sudo pacman -S --needed)
     if ((webcam)); then
         kernelbase=$(cat "/usr/lib/modules/$(uname -r)/pkgbase" 2>/dev/null || true)
@@ -75,5 +75,5 @@ if ((webcam)); then
         echo 'Camera module could not load. Check matching headers/DKMS and Secure Boot signing, then reboot. The app remains installed.' >&2
     fi
 fi
-echo 'Installed. Launch vivo-desktop from your application menu as your regular user.'
+echo 'Installed. Launch VOkit from your application menu or run vokit as your regular user.'
 echo 'Phone consent prompts and Wayland portal prompts must be approved interactively. No audio defaults or firewall settings were changed.'

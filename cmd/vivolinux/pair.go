@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"net/http"
 	"net/netip"
 	"os"
 	"os/exec"
@@ -474,13 +475,36 @@ func runPair(ctx context.Context, args []string) error {
 			stage("file_selection_not_in_page")
 		}()
 	}
+	previewGateway, err := newMediaGateway(testCtx, func(streamCtx context.Context, entry vivo.FileEntry, byteRange string) (*http.Response, error) {
+		var streamClient *vivo.PhoneClient
+		var streamErr error
+		if options.trustScanned {
+			streamClient, streamErr = vivo.NewFirstUsePhoneClient(phoneAddress)
+		} else {
+			streamClient, streamErr = vivo.NewPhoneClient(phoneAddress, options.pin)
+		}
+		if streamErr != nil {
+			return nil, streamErr
+		}
+		response, streamErr := streamClient.OpenMediaStream(streamCtx, session, entry, byteRange)
+		if streamErr != nil {
+			streamClient.Close()
+			return nil, streamErr
+		}
+		// The response body exclusively owns this client's TLS connection.
+		return response, nil
+	}, func() bool { return connected.Load() && fileAllowed.Load() })
+	if err != nil {
+		return errors.New("cannot start local media streaming")
+	}
+	defer previewGateway.Close()
 	localReady := make(chan error, 2)
 	fileWorker.Add(1)
 	go func() {
 		defer fileWorker.Done()
 		err := service.ServeNativeReady(testCtx, options.nativeSocket, func(requestCtx context.Context, request service.NativeRequest) (any, error) {
 			if request.Method == "status" {
-				return map[string]any{"backend": "native-vivo", "connected": connected.Load(), "clipboard_enabled": options.clipboard, "file_permission": fileAllowed.Load(), "receive_ready": receiveReady, "receive_enabled": options.receiveDir != ""}, nil
+				return map[string]any{"backend": "native-vivo", "connected": connected.Load(), "device_name": session.DeviceName, "clipboard_enabled": options.clipboard, "file_permission": fileAllowed.Load(), "receive_ready": receiveReady, "receive_enabled": options.receiveDir != ""}, nil
 			}
 			if !connected.Load() {
 				return nil, errors.New("phone is disconnected")
@@ -533,6 +557,8 @@ func runPair(ctx context.Context, args []string) error {
 					var result any
 					var err error
 					switch request.Method {
+					case "stream":
+						return previewGateway.register(entry)
 					case "thumbnail":
 						result, err = dataClient.FetchThumbnail(requestCtx, session, entry, request.Width, request.Height)
 					case "preview":

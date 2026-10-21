@@ -141,6 +141,7 @@ type Session struct {
 	SID          string
 	ConnectionID string
 	StorageRoot  string `json:"-"`
+	DeviceName   string `json:"-"`
 	ExpiresAt    time.Time
 }
 

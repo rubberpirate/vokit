@@ -13,6 +13,8 @@ import subprocess
 import threading
 import time
 import uuid
+import urllib.request
+from urllib.parse import urlsplit
 from pathlib import Path
 
 import gi
@@ -21,7 +23,7 @@ gi.require_version('Gtk', '4.0')
 gi.require_version('Adw', '1')
 gi.require_version('Gst', '1.0')
 gi.require_version('GstVideo', '1.0')
-from gi.repository import Adw, Gdk, Gio, GLib, Gst, GstVideo, Gtk
+from gi.repository import Adw, Gdk, GdkPixbuf, Gio, GLib, Gst, GstVideo, Gtk
 
 Gst.init(None)
 RECORD_LIMIT = 16 * 1024 * 1024
@@ -532,6 +534,7 @@ class MediaPanel(Gtk.Box):
 
     def _set_status(self, text):
         self.status.set_text(text)
+        self.status.set_visible(self.mode != 'screen' or text != 'Live')
         self.status.set_tooltip_text(text)
         self._update_controls()
         return False
@@ -578,7 +581,7 @@ class MediaPanel(Gtk.Box):
             self.session = None
         self.decoder = None
         self.picture.set_paintable(None)
-        self.status.set_text('Preview stopped.' if self.connected else 'Connect the phone to start.')
+        self._set_status('Preview stopped.' if self.connected else 'Connect the phone to start.')
         self._update_controls()
 
     def _session_status(self, session, text):
@@ -758,30 +761,187 @@ class MirrorWindow(Adw.Window):
         self.panel.stop()
 
 
+def valid_stream_url(value):
+    if not isinstance(value, str):
+        return False
+    try:
+        url = urlsplit(value)
+        return (url.scheme == 'http' and url.hostname == '127.0.0.1' and url.port is not None
+                and url.username is None and url.password is None and not url.query and not url.fragment
+                and re.fullmatch(r'/preview/[0-9a-f]{64}', url.path) is not None)
+    except ValueError:
+        return False
+
+
+def release_stream(url):
+    if not valid_stream_url(url):
+        return
+    def release():
+        try:
+            request = urllib.request.Request(url, method='DELETE')
+            with urllib.request.build_opener(urllib.request.ProxyHandler({})).open(request, timeout=3):
+                pass
+        except (OSError, ValueError):
+            pass
+    threading.Thread(target=release, daemon=True).start()
+
+
 class MediaViewer(Adw.Window):
+    """Memory-only images and seekable GStreamer HTTP video; no file cache."""
     def __init__(self, app, path, mime, on_close=None):
-        super().__init__(application=app, title=Path(path).name, default_width=960, default_height=720)
+        super().__init__(application=app, title='Media viewer', default_width=960, default_height=720)
         self.on_close = on_close
-        self.video = None
+        self.closed = threading.Event()
+        self.pipeline = None
+        self.timer = 0
+        self.video = None  # retained for callers that inspect an image viewer
+        self.updating_seek = False
+        self.streaming = valid_stream_url(path)
+        if not self.streaming and not Path(path).is_file():
+            raise ValueError('Invalid media source')
         toolbar = Adw.ToolbarView()
         header = Adw.HeaderBar()
         toolbar.add_top_bar(header)
+        self.media = Gtk.Picture(content_fit=Gtk.ContentFit.CONTAIN, can_shrink=True,
+                                 hexpand=True, vexpand=True)
+        self.message = Gtk.Label(label='Opening media…', halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER)
+        overlay = Gtk.Overlay(child=self.media)
+        overlay.add_overlay(self.message)
+        toolbar.set_content(overlay)
         if mime.startswith('image/'):
-            self.media = Gtk.Picture.new_for_filename(str(path))
-            self.media.set_content_fit(Gtk.ContentFit.CONTAIN)
-            self.media.set_can_shrink(True)
+            if self.streaming:
+                threading.Thread(target=self._load_image, args=(path,), daemon=True).start()
+            else:
+                self.media.set_filename(str(path))
+                self.message.set_visible(False)
         else:
-            self.video = Gtk.MediaFile.new_for_filename(str(path))
-            self.media = Gtk.Video(media_stream=self.video, autoplay=True)
-            self.video.play()
-        self.media.set_hexpand(True)
-        self.media.set_vexpand(True)
-        toolbar.set_content(self.media)
+            self._start_video(path)
+            controls = Gtk.Box(spacing=12, margin_start=16, margin_end=16, margin_top=10, margin_bottom=10)
+            self.play_button = Gtk.Button(icon_name='media-playback-pause-symbolic', tooltip_text='Play or pause')
+            self.play_button.connect('clicked', self._toggle_play)
+            controls.append(self.play_button)
+            self.seek = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 0, 1, .1)
+            self.seek.set_hexpand(True)
+            self.seek.set_draw_value(False)
+            self.seek.set_sensitive(False)
+            self.seek.set_tooltip_text('Playback position')
+            self.seek.connect('value-changed', self._seek)
+            controls.append(self.seek)
+            self.time_label = Gtk.Label(label='0:00')
+            controls.append(self.time_label)
+            toolbar.add_bottom_bar(controls)
+            self.timer = GLib.timeout_add(200, self._tick)
         self.set_content(toolbar)
         keys = Gtk.EventControllerKey()
         keys.connect('key-pressed', self._key)
         self.add_controller(keys)
         self.connect('close-request', self._close)
+
+    def _load_image(self, url):
+        loader = GdkPixbuf.PixbufLoader()
+        invalid = []
+        def dimensions(current, width, height):
+            if width < 1 or height < 1 or width * height > 100 * 1024 * 1024:
+                invalid.append(True)
+            scale = min(1, 3200 / max(width, height, 1))
+            current.set_size(max(1, int(width * scale)), max(1, int(height * scale)))
+        loader.connect('size-prepared', dimensions)
+        try:
+            opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+            with opener.open(url, timeout=5) as response:
+                total = 0
+                while not self.closed.is_set():
+                    chunk = response.read(65536)
+                    if not chunk:
+                        break
+                    total += len(chunk)
+                    if total > 32 * 1024 * 1024 or invalid:
+                        raise ValueError('Image exceeds preview limit')
+                    loader.write(chunk)
+            loader.close()
+            pixbuf = loader.get_pixbuf()
+            if pixbuf is None or invalid:
+                raise ValueError('Unsupported image')
+            def display():
+                if not self.closed.is_set():
+                    self.media.set_paintable(Gdk.Texture.new_for_pixbuf(pixbuf))
+                    self.message.set_visible(False)
+                return GLib.SOURCE_REMOVE
+            GLib.idle_add(display)
+        except (OSError, ValueError, GLib.Error):
+            try:
+                loader.close()
+            except GLib.Error:
+                pass
+            GLib.idle_add(self._error, 'This image could not be streamed. Check phone access and image format.')
+
+    def _error(self, text):
+        if not self.closed.is_set():
+            self.message.set_text(text)
+            self.message.set_visible(True)
+        return GLib.SOURCE_REMOVE
+
+    def _start_video(self, source):
+        self.pipeline = Gst.ElementFactory.make('playbin3')
+        sink = Gst.ElementFactory.make('gtk4paintablesink')
+        if not self.pipeline or not sink:
+            raise RuntimeError('GStreamer GTK video support is required')
+        self.media.set_paintable(sink.get_property('paintable'))
+        self.pipeline.set_property('video-sink', sink)
+        # Explicitly disable GStreamer's download-to-disk mode.
+        self.pipeline.set_property('flags', int(self.pipeline.get_property('flags')) & ~0x80)
+        self.pipeline.set_property('buffer-size', 4 * 1024 * 1024)
+        self.pipeline.set_property('uri', source if self.streaming else Path(source).resolve().as_uri())
+        bus = self.pipeline.get_bus()
+        bus.add_signal_watch()
+        bus.connect('message', self._bus_message)
+        self.pipeline.set_state(Gst.State.PLAYING)
+
+    def _bus_message(self, bus, message):
+        if self.closed.is_set():
+            return
+        if message.type == Gst.MessageType.ERROR:
+            self._error('This video could not be streamed. Check phone access and video format.')
+            self.pipeline.set_state(Gst.State.NULL)
+        elif message.type == Gst.MessageType.ASYNC_DONE:
+            self.message.set_visible(False)
+        elif message.type == Gst.MessageType.EOS:
+            self.pipeline.set_state(Gst.State.PAUSED)
+            self.play_button.set_icon_name('media-playback-start-symbolic')
+
+    def _toggle_play(self, *_):
+        if not self.pipeline:
+            return
+        state = self.pipeline.get_state(0).state
+        playing = state == Gst.State.PLAYING
+        if not playing:
+            ok, position = self.pipeline.query_position(Gst.Format.TIME)
+            duration_ok, duration = self.pipeline.query_duration(Gst.Format.TIME)
+            if ok and duration_ok and position >= duration:
+                self.pipeline.seek_simple(Gst.Format.TIME, Gst.SeekFlags.FLUSH | Gst.SeekFlags.KEY_UNIT, 0)
+        self.pipeline.set_state(Gst.State.PAUSED if playing else Gst.State.PLAYING)
+        self.play_button.set_icon_name('media-playback-start-symbolic' if playing else 'media-playback-pause-symbolic')
+
+    def _seek(self, scale):
+        if self.pipeline and not self.updating_seek:
+            self.pipeline.seek_simple(Gst.Format.TIME, Gst.SeekFlags.FLUSH | Gst.SeekFlags.KEY_UNIT,
+                                      int(scale.get_value() * Gst.SECOND))
+
+    def _tick(self):
+        if self.closed.is_set() or not self.pipeline:
+            return GLib.SOURCE_REMOVE
+        ok, duration = self.pipeline.query_duration(Gst.Format.TIME)
+        position_ok, position = self.pipeline.query_position(Gst.Format.TIME)
+        if ok and duration > 0:
+            self.updating_seek = True
+            self.seek.set_range(0, duration / Gst.SECOND)
+            if position_ok:
+                self.seek.set_value(position / Gst.SECOND)
+                seconds = int(position / Gst.SECOND)
+                self.time_label.set_text(f'{seconds // 60}:{seconds % 60:02d}')
+            self.updating_seek = False
+            self.seek.set_sensitive(True)
+        return GLib.SOURCE_CONTINUE
 
     def _key(self, controller, keyval, keycode, state):
         if keyval == Gdk.KEY_F11:
@@ -793,9 +953,14 @@ class MediaViewer(Adw.Window):
         return False
 
     def _close(self, *_):
-        if self.video:
-            self.video.pause()
-            self.video.clear()
+        self.closed.set()
+        if self.timer:
+            GLib.source_remove(self.timer)
+            self.timer = 0
+        if self.pipeline:
+            self.pipeline.get_bus().remove_signal_watch()
+            self.pipeline.set_state(Gst.State.NULL)
+            self.pipeline = None
         if self.on_close:
             callback, self.on_close = self.on_close, None
             callback()

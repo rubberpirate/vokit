@@ -154,6 +154,9 @@ func TestPinnedPhoneNegotiatesLinuxWithoutAdvertisingUnimplementedFeatures(t *te
 	if err != nil || !gotVersion || !gotBase || !capabilities["isSupportCall"] || capabilities["isSupportPcMode"] {
 		t.Fatalf("negotiation: %v %#v", err, capabilities)
 	}
+	if s.DeviceName != "Private Phone" {
+		t.Fatal("negotiated phone name missing")
+	}
 	if s.StorageRoot != "/storage/emulated/0" {
 		t.Fatal("negotiated storage root missing")
 	}

@@ -11,6 +11,7 @@ desktop:
 	install -d build/vivo_desktop
 	install -m644 desktop/gtk/vivo_desktop/*.py desktop/gtk/vivo_desktop/*.css build/vivo_desktop/
 	install -m755 desktop/gtk/vivo-desktop desktop/gtk/vivo-desktop-helper build/
+	install -m755 desktop/gtk/vivo-desktop build/vokit
 	$(PYTHON) -m compileall -q build/vivo_desktop
 
 test-desktop: desktop
@@ -26,6 +27,7 @@ install: build
 install-desktop: desktop
 	install -Dm755 build/vivo-desktop-helper "$(DESTDIR)$(PREFIX)/bin/vivo-desktop-helper"
 	install -Dm755 build/vivo-desktop "$(DESTDIR)$(PREFIX)/bin/vivo-desktop"
+	install -Dm755 build/vokit "$(DESTDIR)$(PREFIX)/bin/vokit"
 
 install-app: build desktop
 	$(MAKE) install-files
@@ -35,6 +37,7 @@ install-files:
 	install -Dm755 build/vivolinux "$(DESTDIR)$(PREFIX)/bin/vivolinux"
 	install -Dm755 build/vivo-desktop-helper "$(DESTDIR)$(PREFIX)/bin/vivo-desktop-helper"
 	install -Dm755 build/vivo-desktop "$(DESTDIR)$(PREFIX)/bin/vivo-desktop"
+	install -Dm755 build/vokit "$(DESTDIR)$(PREFIX)/bin/vokit"
 	install -d "$(DESTDIR)$(PREFIX)/lib/vivo-office-kit/vivo_desktop"
 	install -m644 desktop/gtk/vivo_desktop/__init__.py desktop/gtk/vivo_desktop/app.py desktop/gtk/vivo_desktop/backend.py desktop/gtk/vivo_desktop/helper.py desktop/gtk/vivo_desktop/media.py desktop/gtk/vivo_desktop/style.css "$(DESTDIR)$(PREFIX)/lib/vivo-office-kit/vivo_desktop/"
 	install -Dm644 packaging/desktop/vivo-office-kit.desktop "$(DESTDIR)$(PREFIX)/share/applications/vivo-office-kit.desktop"

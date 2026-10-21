@@ -27,6 +27,7 @@ Usage:
   vivolinux download --remote PHONE_FILE --output NEW_LOCAL_FILE [--page 0]
   vivolinux upload --local LOCAL_FILE --to PHONE_DIRECTORY
   vivolinux thumbnail --remote PHONE_MEDIA [--width 128 --height 128]
+  vivolinux stream --remote PHONE_MEDIA [--category images|videos --page 0]
   vivolinux preview --remote PHONE_MEDIA --output PRIVATE_CACHE_FILE
   vivolinux phone-certificate --phone LAN_IP
   vivolinux doctor
@@ -73,7 +74,7 @@ func run(ctx context.Context, args []string, runner android.Runner) error {
 		return nil
 	}
 	command := args[0]
-	if command == "native-status" || command == "files" || command == "download" || command == "upload" || command == "thumbnail" || command == "preview" {
+	if command == "native-status" || command == "files" || command == "download" || command == "upload" || command == "thumbnail" || command == "preview" || command == "stream" {
 		return runNative(ctx, args)
 	}
 	if command == "pair" {

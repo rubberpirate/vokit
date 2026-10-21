@@ -51,7 +51,7 @@ func ValidFileCategory(category string) bool {
 }
 
 func validNativeRequest(req NativeRequest) bool {
-	if req.Category != "" && (!ValidFileCategory(req.Category) || (req.Method != "files" && req.Method != "download" && req.Method != "thumbnail" && req.Method != "preview")) {
+	if req.Category != "" && (!ValidFileCategory(req.Category) || (req.Method != "files" && req.Method != "download" && req.Method != "thumbnail" && req.Method != "preview" && req.Method != "stream")) {
 		return false
 	}
 	if req.Page < 0 {
@@ -67,6 +67,8 @@ func validNativeRequest(req NativeRequest) bool {
 		return ((req.Category == "" && nativeAbsolutePath(req.Directory)) || (req.Category != "" && req.Directory == "")) && req.Remote == "" && req.Output == "" && req.Local == ""
 	case "download", "preview":
 		return req.Directory == "" && nativeAbsolutePath(req.Remote) && nativeAbsolutePath(req.Output) && req.Local == ""
+	case "stream":
+		return req.Directory == "" && nativeAbsolutePath(req.Remote) && req.Output == "" && req.Local == ""
 	case "thumbnail":
 		return req.Directory == "" && nativeAbsolutePath(req.Remote) && req.Output == "" && req.Local == "" && req.Width > 0 && req.Width <= 1024 && req.Height > 0 && req.Height <= 1024
 	case "upload":

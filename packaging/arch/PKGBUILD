@@ -1,22 +1,24 @@
 # Build using scripts/build-arch-package.sh from the source checkout.
-pkgname=vivo-office-kit-linux
-pkgver=0.3.0
+pkgname=vokit
+pkgver=0.4.0
 pkgrel=1
-pkgdesc='Independent native Linux desktop companion for compatible vivo phones'
+pkgdesc='VOkit: independent native Linux desktop companion for compatible vivo phones'
 arch=('x86_64' 'aarch64')
 license=('LicenseRef-Unspecified')
-depends=('gtk4>=4.16' 'libadwaita>=1.6' 'python-gobject' 'python-cairo' 'gstreamer' 'gst-plugins-base' 'gst-plugins-good' 'gst-plugins-bad' 'gst-libav' 'qrencode' 'wl-clipboard' 'pipewire-audio' 'xdg-utils')
+depends=('gtk4>=4.16' 'libadwaita>=1.6' 'python-gobject' 'python-cairo' 'gstreamer' 'gst-plugins-base' 'gst-plugins-good' 'gst-plugins-bad' 'gst-libav' 'gst-plugin-gtk4' 'qrencode' 'wl-clipboard' 'pipewire-audio' 'xdg-utils')
 install="$pkgname.install"
+provides=('vivo-office-kit-linux')
+conflicts=('vivo-office-kit-linux')
 backup=('etc/modprobe.d/vivo-phone-camera.conf' 'etc/modules-load.d/vivo-phone-camera.conf')
 makedepends=('go>=1.23' 'make')
 checkdepends=('xorg-server-xvfb' 'xorg-xauth')
-optdepends=('v4l2loopback-dkms: publish a virtual webcam (requires matching kernel headers)' 'gst-plugin-gtk4: native GTK video sink (RGB fallback included)')
-source=("vivo-office-kit-linux-${pkgver}.tar.gz")
+optdepends=('v4l2loopback-dkms: publish a virtual webcam (requires matching kernel headers)')
+source=("vokit-${pkgver}.tar.gz")
 # Locally generated source snapshot; the wrapper replaces this with its SHA-256.
 sha256sums=('SKIP')
 
 build() {
-    cd "$srcdir/vivo-office-kit-linux-${pkgver}"
+    cd "$srcdir/vokit-${pkgver}"
     export CGO_ENABLED=0
     export GOTOOLCHAIN=local
     export GOCACHE="$srcdir/go-build-cache"
@@ -27,7 +29,7 @@ build() {
 }
 
 check() {
-    cd "$srcdir/vivo-office-kit-linux-${pkgver}"
+    cd "$srcdir/vokit-${pkgver}"
     export GOTOOLCHAIN=local GOCACHE="$srcdir/go-build-cache" GOMODCACHE="$srcdir/go-module-cache"
     export GOFLAGS='-modcacherw'
     go test ./...
@@ -36,6 +38,6 @@ check() {
 }
 
 package() {
-    cd "$srcdir/vivo-office-kit-linux-${pkgver}"
+    cd "$srcdir/vokit-${pkgver}"
     make PREFIX=/usr DESTDIR="$pkgdir" install-files install-system-config
 }

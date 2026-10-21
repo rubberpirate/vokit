@@ -63,6 +63,10 @@ func parseNativeOptions(args []string) (string, service.NativeRequest, error) {
 		flags.StringVar(&request.Remote, "remote", "", "absolute selected phone file")
 		flags.StringVar(&request.Output, "output", "", "new local destination file")
 		flags.IntVar(&request.Page, "page", 0, "page containing the selected file")
+	case "stream":
+		request.Method = "stream"
+		flags.StringVar(&request.Remote, "remote", "", "absolute selected phone media file")
+		flags.IntVar(&request.Page, "page", 0, "page containing selected media")
 	case "thumbnail":
 		request.Method = "thumbnail"
 		flags.StringVar(&request.Remote, "remote", "", "absolute selected phone media file")
@@ -76,7 +80,7 @@ func parseNativeOptions(args []string) (string, service.NativeRequest, error) {
 	default:
 		return "", request, errors.New("unsupported native command")
 	}
-	if request.Method == "files" || request.Method == "download" || request.Method == "preview" || request.Method == "thumbnail" {
+	if request.Method == "files" || request.Method == "download" || request.Method == "preview" || request.Method == "thumbnail" || request.Method == "stream" {
 		flags.StringVar(&request.Category, "category", "", "global phone collection: recent, images, videos, audio, documents")
 	}
 	if err := flags.Parse(args[1:]); err != nil {
@@ -110,6 +114,9 @@ func parseNativeOptions(args []string) (string, service.NativeRequest, error) {
 	}
 	if request.Method == "files" && request.Category == "" && !validPath(request.Directory) {
 		return "", request, errors.New("phone directory must be a normalized absolute path")
+	}
+	if request.Method == "stream" && !validPath(request.Remote) {
+		return "", request, errors.New("invalid media selection")
 	}
 	if request.Method == "thumbnail" && (!validPath(request.Remote) || request.Width < 1 || request.Width > 1024 || request.Height < 1 || request.Height > 1024) {
 		return "", request, errors.New("invalid thumbnail selection or size")

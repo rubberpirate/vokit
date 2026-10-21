@@ -73,7 +73,7 @@ func (p *phoneConnection) RoundTrip(req *http.Request) (*http.Response, error) {
 		return nil, err
 	}
 	// Bound the entire HTTP reply, including headers and chunk framing.
-	streaming := req.Method == http.MethodGet && req.URL.Path == "/pc_file_manager/download"
+	streaming := req.Method == http.MethodGet && (req.URL.Path == "/pc_file_manager/download" || req.URL.Path == "/download/down_files")
 	p.incoming.N = maxResponseBytes + 64*1024
 	if streaming {
 		p.incoming.N = MaxDownloadBytes + 2*1024*1024
@@ -147,7 +147,7 @@ func (p *phoneConnection) RoundTrip(req *http.Request) (*http.Response, error) {
 		response.Body = &phoneDuplex{Conn: p.conn, reader: p.reader}
 		return response, nil
 	}
-	if streaming && response.StatusCode == http.StatusOK {
+	if streaming && (response.StatusCode == http.StatusOK || response.StatusCode == http.StatusPartialContent) {
 		p.upgraded = true // Body exclusively owns the data connection until Close.
 		stopOnReturn = false
 		response.Body = &phoneStream{ReadCloser: response.Body, conn: p.conn, stop: stop}

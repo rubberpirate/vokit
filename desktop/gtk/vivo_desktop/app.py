@@ -11,7 +11,6 @@ from pathlib import Path
 import shutil
 import stat
 import sys
-import tempfile
 
 import gi
 
@@ -125,7 +124,7 @@ def decode_thumbnail(result):
 
 class OfficeWindow(Adw.ApplicationWindow):
     def __init__(self, app):
-        super().__init__(application=app, title="vivo Office Kit")
+        super().__init__(application=app, title="VOkit")
         self.app = app
         self.backend = app.backend
         self.preferences = app.settings
@@ -152,7 +151,6 @@ class OfficeWindow(Adw.ApplicationWindow):
         self.qr_dialog = None
         self.preview_busy = False
         self.viewers = set()
-        self.caches = set()
         self.nav_labels = []
         self.nav_buttons = {}
         display = Gdk.Display.get_default()
@@ -173,20 +171,20 @@ class OfficeWindow(Adw.ApplicationWindow):
         toolbar = Adw.ToolbarView()
         header = Adw.HeaderBar()
         header.add_css_class("office-header")
-        header.set_title_widget(label("OFFICE KIT", "edition"))
+        header.set_title_widget(label("VOkit", "edition"))
         self.search = Gtk.SearchEntry(placeholder_text="Search loaded phone files", hexpand=True)
         self.search.set_size_request(300, -1)
         self.search.connect("search-changed", self._search_changed)
         header.pack_end(self.search)
         menu = Gio.Menu()
         menu.append("Settings", "app.preferences")
-        menu.append("Quit Office Kit", "app.quit")
+        menu.append("Quit VOkit", "app.quit")
         header.pack_end(Gtk.MenuButton(icon_name="open-menu-symbolic", menu_model=menu))
         toolbar.add_top_bar(header)
         shell = box(spacing=6)
         nav = box(True, 12, "outer-nav")
         nav.set_size_request(94, -1)
-        brand = label("vivo", "brand", halign=Gtk.Align.CENTER)
+        brand = label("VOkit", "brand", halign=Gtk.Align.CENTER)
         brand.set_margin_bottom(14)
         nav.append(brand)
         first = None
@@ -205,6 +203,10 @@ class OfficeWindow(Adw.ApplicationWindow):
             content.set_halign(Gtk.Align.CENTER)
             content.append(Gtk.Image(icon_name=icon, pixel_size=22))
             title_label = label(title, "nav-label", halign=Gtk.Align.CENTER)
+            if key == "files":
+                self.phone_nav_label = title_label
+                title_label.set_max_width_chars(14)
+                title_label.set_ellipsize(Pango.EllipsizeMode.END)
             self.nav_labels.append(title_label)
             content.append(title_label)
             button.set_child(content)
@@ -478,6 +480,14 @@ class OfficeWindow(Adw.ApplicationWindow):
         return page
 
     def _settings_page(self):
+        container = box(True, 8)
+        heading = box(spacing=8)
+        heading.set_margin_start(18)
+        heading.set_margin_end(18)
+        heading.append(label("Settings", "device-title", hexpand=True))
+        self.close_settings_button = icon_button("window-close-symbolic", "Close Settings", lambda: self._navigate("files"))
+        heading.append(self.close_settings_button)
+        container.append(heading)
         page = Adw.PreferencesPage()
         page.add_css_class("settings-content")
         connection = Adw.PreferencesGroup(title="Connect your phone", description="Use the phone's private Wi-Fi address and approve the pairing QR in Office Kit.")
@@ -516,8 +526,10 @@ class OfficeWindow(Adw.ApplicationWindow):
         pair_group.add(pair_row)
         page.add(pair_group)
         scroll = Gtk.ScrolledWindow(hscrollbar_policy=Gtk.PolicyType.NEVER)
+        scroll.set_vexpand(True)
         scroll.set_child(page)
-        return scroll
+        container.append(scroll)
+        return container
 
     def _navigate(self, destination):
         if destination == "connect":
@@ -753,43 +765,33 @@ class OfficeWindow(Adw.ApplicationWindow):
             return
         self.preview_busy = True
         self._update_controls()
-        cache = tempfile.mkdtemp(prefix="vivo-media-")
-        self.caches.add(cache)
-        output = str(Path(cache) / ("media." + item.extension))
-        self.receipt.set_text("Preparing media preview…")
-
-        def cleanup(*_):
-            self.caches.discard(cache)
-            shutil.rmtree(cache, ignore_errors=True)
+        self.receipt.set_text("Opening media stream…")
 
         def completed(result, error):
             self.preview_busy = False
             self._update_controls()
+            from .media import MediaViewer, valid_stream_url, release_stream
             mime = result.get("mime", "") if isinstance(result, dict) else ""
-            limit = 32 * 1024 * 1024 if mime.startswith("image/") else 256 * 1024 * 1024
-            valid = (not error and isinstance(result, dict) and result.get("path") == output
-                     and (mime.startswith("image/") or mime.startswith("video/"))
-                     and private_regular(output, limit)
-                     and os.path.getsize(output) == result.get("bytes")
-                     and os.path.realpath(os.path.dirname(output)) == os.path.realpath(cache))
+            url = result.get("url", "") if isinstance(result, dict) else ""
+            valid = (not error and valid_stream_url(url)
+                     and (mime.startswith("image/") or mime.startswith("video/")))
             if self.shutting_down or not valid:
-                cleanup()
+                release_stream(url)
                 if not self.shutting_down:
-                    self.receipt.set_text("Cannot prepare this preview. Check phone access, size and media format.")
+                    self.receipt.set_text("Cannot open this stream. Check phone access and media format.")
                 return
             try:
-                from .media import MediaViewer
-                viewer = MediaViewer(self.app, output, mime, on_close=cleanup)
+                viewer = MediaViewer(self.app, url, mime, on_close=lambda: release_stream(url))
                 viewer.set_title(item.name)
                 self.viewers.add(viewer)
                 viewer.connect("close-request", lambda current: self.viewers.discard(current) or False)
                 viewer.present()
                 self.receipt.set_text("")
-            except (ImportError, GLib.Error, RuntimeError):
-                cleanup()
-                self.receipt.set_text("The media preview could not be opened.")
+            except (ImportError, GLib.Error, RuntimeError, ValueError):
+                release_stream(url)
+                self.receipt.set_text("The media stream could not be opened.")
 
-        self.backend.call(self._selected_arguments("preview", item) + ["--output", output], completed)
+        self.backend.call(self._selected_arguments("stream", item), completed)
 
     def _download_file(self):
         item = self.selection.get_selected_item()
@@ -872,6 +874,12 @@ class OfficeWindow(Adw.ApplicationWindow):
                     else "Waiting for your phone…" if self.owned else "Connect your phone to get started")
             else:
                 self.connected = bool(result.get("connected"))
+                device_name = result.get("device_name") or "vivo phone"
+                self.device_title.set_text(device_name)
+                self.phone_nav_label.set_text(device_name)
+                self.nav_buttons["files"].set_tooltip_text(device_name)
+                self.nav_buttons["files"].update_property([Gtk.AccessibleProperty.LABEL], [device_name])
+                self.search.set_placeholder_text(f"Search {device_name}’s loaded files")
                 self.external_session = not self.owned
                 if self.connected:
                     self.connection_status.set_text("Connected · Your phone is ready" if result.get("receive_ready")
@@ -887,6 +895,8 @@ class OfficeWindow(Adw.ApplicationWindow):
             self._files_changed()
             if self.connected and not self.loaded and not self.loading:
                 self._load_files(True)
+            if self.connected and not was_connected:
+                self._navigate("files")
 
         self.backend.call(["native-status"], completed)
         return GLib.SOURCE_CONTINUE
@@ -973,6 +983,7 @@ class OfficeWindow(Adw.ApplicationWindow):
             self.connection_status.set_text("Scan the QR, then approve the connection on your phone")
         elif stage == "control_connected":
             self.event_connected = True
+            self._navigate("files")
             if self.qr_dialog:
                 self.qr_dialog.close()
                 self.qr_dialog = None
@@ -1081,9 +1092,6 @@ class OfficeWindow(Adw.ApplicationWindow):
             self.mirror_window.stop()
         for viewer in tuple(self.viewers):
             viewer.close()
-        for cache in tuple(self.caches):
-            shutil.rmtree(cache, ignore_errors=True)
-        self.caches.clear()
 
 
 class OfficeApplication(Adw.Application):
@@ -1155,6 +1163,11 @@ class OfficeApplication(Adw.Application):
         try:
             window = self.window
             assert window.connected and window.category == "recent"
+            assert window.get_title() == "VOkit"
+            assert window.device_title.get_text() == "Fixture phone"
+            window._navigate("settings")
+            window.close_settings_button.emit("clicked")
+            assert window.pages.get_visible_child_name() == "files"
             assert isinstance(window.grid, Gtk.GridView) and isinstance(window.store, Gio.ListStore)
             assert window.store.get_n_items() == 5, "automatic page loading"
             assert window.store.get_item(0).page == 0 and window.store.get_item(4).page == 1
@@ -1226,7 +1239,7 @@ class _TestBackend:
     def call(self, args, done):
         self.calls.append(args)
         if args[0] == "native-status":
-            result = {"connected": True, "receive_ready": True, "receive_enabled": True}
+            result = {"connected": True, "device_name": "Fixture phone", "receive_ready": True, "receive_enabled": True}
         elif args[0] == "files":
             page = int(args[args.index("--page") + 1])
             names = ["picture.jpg", "song.mp3", "document.pdf"] if page == 0 else ["Spring afternoon.jpg", "clip.mp4"] if page == 1 else []
@@ -1245,7 +1258,7 @@ class _TestBackend:
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description="vivo Office Kit native GTK desktop")
+    parser = argparse.ArgumentParser(description="VOkit native GTK desktop")
     parser.add_argument("--self-test", action="store_true")
     options = parser.parse_args(argv)
     app = OfficeApplication(_TestBackend(), _TestSettings(), testing=True) if options.self_test else OfficeApplication()

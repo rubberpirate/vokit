@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.."
-version=0.3.0
+version=0.4.0
 output=${1:-build/arch-package}
 mkdir -p -- "$output"
 output=$(realpath -- "$output")
-archive="$output/vivo-office-kit-linux-$version.tar.gz"
+archive="$output/vokit-$version.tar.gz"
 # Explicit application source roots keep vendor installers, captures and credentials out.
 python3 - "$archive" "$version" <<'PY'
 import pathlib, sys, tarfile
@@ -19,10 +19,10 @@ with tarfile.open(sys.argv[1], 'w:gz') as archive:
                 continue
             if entry.is_dir() and path.suffix not in ('.go', '.py', '.css', '.sh', '.desktop', '.svg', '.rules', '.conf', '.install') and path.name not in ('PKGBUILD', 'vivo-desktop', 'vivo-desktop-helper'):
                 continue
-            archive.add(path, arcname=f'vivo-office-kit-linux-{sys.argv[2]}/{path.relative_to(root)}', recursive=False)
+            archive.add(path, arcname=f'vokit-{sys.argv[2]}/{path.relative_to(root)}', recursive=False)
 PY
 cp packaging/arch/PKGBUILD "$output/PKGBUILD"
-cp packaging/arch/vivo-office-kit-linux.install "$output/vivo-office-kit-linux.install"
+cp packaging/arch/vivo-office-kit-linux.install "$output/vokit.install"
 digest=$(sha256sum "$archive"); digest=${digest%% *}
 sed -i "s/sha256sums=('SKIP')/sha256sums=('$digest')/" "$output/PKGBUILD"
 echo "Source package prepared in $output"

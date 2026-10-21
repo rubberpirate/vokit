@@ -189,6 +189,11 @@ func (p *PhoneClient) Negotiate(ctx context.Context, s *Session) (map[string]boo
 		return nil, errors.New("phone rejected base-info negotiation")
 	}
 	s.StorageRoot = ""
+	s.DeviceName = ""
+	var deviceName string
+	if json.Unmarshal(info.Data["mobileDeviceName"], &deviceName) == nil && len(deviceName) <= 256 && !strings.ContainsAny(deviceName, "\x00\r\n") {
+		s.DeviceName = strings.TrimSpace(deviceName)
+	}
 	var storageRoot string
 	if json.Unmarshal(info.Data["innerRoot"], &storageRoot) == nil && storageRoot != "/" && validPhonePath(storageRoot) {
 		s.StorageRoot = storageRoot

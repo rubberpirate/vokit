@@ -104,7 +104,7 @@ class Helper:
                 if not self.bus or state not in MESSAGES:
                     self.acknowledge("notification",False,value)
                 else:
-                    parameters = GLib.Variant("(susssasa{sv}i)",("Vivo Desktop",0,"phone-symbolic","Vivo Desktop",MESSAGES[state],[],{"urgency":GLib.Variant("y",1)},4000))
+                    parameters = GLib.Variant("(susssasa{sv}i)",("VOkit",0,"phone-symbolic","VOkit",MESSAGES[state],[],{"urgency":GLib.Variant("y",1)},4000))
                     def completed(connection,result):
                         try: connection.call_finish(result); ok=True
                         except GLib.Error: ok=False

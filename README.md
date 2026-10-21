@@ -1,4 +1,4 @@
-# vivo Office Kit for Linux
+# VOkit
 
 An independent native Linux companion for compatible vivo phones, built with Go, GTK4 and libadwaita. GStreamer performs video and audio decoding in native libraries. It does not require Wine or USB debugging. This project is not affiliated with or endorsed by vivo.
 
@@ -6,9 +6,9 @@ Connect the laptop and phone to the same network, open the desktop app, and scan
 
 Implemented features include file browsing and upload/download, image/video thumbnails and viewing, text clipboard sync, phone screen mirroring with touch and typing, and front/rear camera sharing. The X300 FE with OriginOS 6 has been tested; 720p screen mirroring was reported smooth. Camera latency varies with network and encoder settings. Compatibility with every phone, Linux distribution and laptop is not established.
 
-The desktop uses a dark File Manager layout with the phone's global Recent, Images, Videos, Audio and Documents collections. More results load as you scroll; search applies to loaded results. Image previews fit the whole image as the window resizes, and videos open in a resizable player with full-screen support. The separate phone mirror keeps touch and typing enabled while streaming; quality and start/stop controls are in its three-dot menu.
+The desktop shows the connected phone’s name and automatically leaves Settings after pairing. Settings has a close button. It uses a dark File Manager layout with the phone's global Recent, Images, Videos, Audio and Documents collections. More results load as you scroll; search applies to loaded results. Image previews fit the whole image as the window resizes, and videos open in a resizable player with full-screen support. The separate phone mirror keeps touch and typing enabled while streaming; quality and start/stop controls are in its three-dot menu.
 
-Phone Share transfers are received automatically while the paired app runs, including while the main window is hidden. Multi-file and repeated shares were verified on the X300 FE. The default destination is `~/Downloads/Vivo Office Kit`; change it in Settings before the next connection. Existing files are preserved, and repeated names receive a suffix. The receiver accepts regular files, with limits of 1 GiB per file, 200 files / 4 GiB per batch, and four queued batches. No additional receive prompt is required on the PC. Each file uses its own authenticated, pinned data channel to the paired phone; it never refreshes certificate trust or retries a failed request within that channel. Media previews currently support JPEG/PNG/GIF up to 32 MiB and common video containers up to 256 MiB.
+Phone Share transfers are received automatically while the paired app runs, including while the main window is hidden. Multi-file and repeated shares were verified on the X300 FE. The default destination is `~/Downloads/Vivo Office Kit`; change it in Settings before the next connection. Existing files are preserved, and repeated names receive a suffix. The receiver accepts regular files, with limits of 1 GiB per file, 200 files / 4 GiB per batch, and four queued batches. No additional receive prompt is required on the PC. Each file uses its own authenticated, pinned data channel to the paired phone; it never refreshes certificate trust or retries a failed request within that channel. Opening media uses the phone’s direct media endpoint through a capability-protected loopback stream, without first downloading a complete file or keeping a disk cache. Images are decoded in memory (up to 32 MiB); videos stream progressively and support seeking (up to 1 GiB). Format support depends on installed decoders. Phones that ignore byte ranges require extra network reads when seeking. Explicit Save and phone Share transfers still write to the chosen download directory.
 
 Camera sharing publishes to a v4l2loopback device, normally `/dev/video10` named **Vivo Phone**. Select that camera in the video-call application. Local preview can be hidden independently of the webcam stream; this passed a live 90-frame Linux consumer check on the X300 FE. Audio sharing uses a PipeWire virtual source when the phone actually provides audio; the tested X300 FE advertised audio but did not send microphone packets in this run, so phone microphone sharing is not yet confirmed. Linux virtual microphones are selected by name in meeting applications, rather than through a separate `/dev/video` node. Notification forwarding, account login, Notes/cloud sync and Remote PC are not complete.
 
@@ -19,7 +19,7 @@ Arch Linux / CachyOS and Debian / Ubuntu:
 ```sh
 ./install.sh --check --with-webcam
 ./install.sh --with-webcam
-vivo-desktop
+vokit
 ```
 
 Run the installer as your regular desktop user. It uses sudo for dependencies and installation, builds as your user, and installs the application under `/usr/local`. Webcam setup is enabled by default; use `--without-webcam` if you do not need a virtual camera. Debian/Ubuntu needs a release with Go 1.23+, GTK 4.16+ and libadwaita 1.6+ packages. Dependency installation needs internet access; no distro repository is added.
@@ -38,11 +38,11 @@ The generated PKGBUILD has a checksum for the generated source archive; it does 
 
 ## Build
 
-Build dependencies: Go 1.23+ and Make. Runtime dependencies: Python 3 with PyGObject, GTK 4.16+, libadwaita 1.6+, GStreamer with base/good/bad/libav plugins, `qrencode`, `wl-clipboard` on Wayland, and PipeWire tools for optional audio sharing. The optional `gst-plugin-gtk4` provides the native GTK video sink; a bounded RGB texture fallback is included. GTK media playback also needs the distribution’s GStreamer GTK media backend. Tests use Xvfb and xauth. ADB/scrcpy remain optional command-line fallbacks.
+Build dependencies: Go 1.23+ and Make. Runtime dependencies: Python 3 with PyGObject, GTK 4.16+, libadwaita 1.6+, GStreamer with base/good/bad/libav plugins, `qrencode`, `wl-clipboard` on Wayland, and PipeWire tools for optional audio sharing. Install the GStreamer GTK4 sink (`gst-plugin-gtk4` on Arch, `gstreamer1.0-gtk4` on Debian/Ubuntu) for the media viewer. Screen and camera preview also include a bounded RGB fallback. Tests use Xvfb and xauth. ADB/scrcpy remain optional command-line fallbacks.
 
 ```sh
 make build desktop
-./build/vivo-desktop
+./build/vokit
 make test
 make test-desktop
 make check-packaging

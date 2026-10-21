@@ -1,9 +1,9 @@
 [Desktop Entry]
 Type=Application
-Name=vivo Office Kit for Linux
+Name=VOkit
 Comment=Connect your vivo phone, transfer files, mirror its screen and share its camera
-Exec=vivo-desktop
-TryExec=vivo-desktop
+Exec=vokit
+TryExec=vokit
 Icon=vivo-office-kit
 Terminal=false
 Categories=Utility;

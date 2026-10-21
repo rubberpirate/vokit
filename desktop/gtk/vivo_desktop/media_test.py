@@ -119,6 +119,10 @@ class NativeMediaTests(unittest.TestCase):
         camera.source.set_selected(1)
         self.assertEqual(camera.source.get_selected(), 1)
         screen = MediaPanel(backend, mode='screen')
+        screen._set_status("Live")
+        self.assertFalse(screen.status.get_visible())
+        screen._set_status("Connection lost")
+        self.assertTrue(screen.status.get_visible())
         screen.connected = True
         inputs = []
         screen.session = SimpleNamespace(send=inputs.append)
@@ -162,7 +166,7 @@ class NativeMediaTests(unittest.TestCase):
         finally:
             audio.close()
 
-    def test_image_viewer_closes_and_cleans_cache_once(self):
+    def test_image_viewer_closes_and_releases_once(self):
         from gi.repository import GdkPixbuf
         from .media import Adw, MediaViewer
         app = Adw.Application(application_id='org.vivo.ViewerTest')
@@ -179,6 +183,57 @@ class NativeMediaTests(unittest.TestCase):
             viewer._close()
             self.assertEqual(closed, [True])
             viewer.destroy()
+
+
+class StreamURLTests(unittest.TestCase):
+    def test_only_loopback_capability_urls_are_accepted(self):
+        from .media import valid_stream_url
+        valid = 'http://127.0.0.1:1234/preview/' + 'a' * 64
+        self.assertTrue(valid_stream_url(valid))
+        for value in (None, '/tmp/image.jpg', valid + '?token=x', valid + '#x',
+                      valid.replace('127.0.0.1', 'phone.local'), valid.replace(':1234', ''),
+                      valid.replace('127.0.0.1', 'user@127.0.0.1')):
+            self.assertFalse(valid_stream_url(value))
+
+
+@unittest.skipUnless(os.environ.get('DISPLAY') or os.environ.get('WAYLAND_DISPLAY'), 'GTK display required')
+class HTTPViewerTests(unittest.TestCase):
+    def test_image_stream_in_memory_and_capability_release(self):
+        import base64
+        from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+        from .media import Adw, MediaViewer, release_stream
+        Adw.init()
+        image = base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=')
+        released = threading.Event()
+        class Handler(BaseHTTPRequestHandler):
+            def log_message(self, *_): pass
+            def do_GET(self):
+                self.send_response(200)
+                self.send_header('Content-Type', 'image/png')
+                self.send_header('Content-Length', str(len(image)))
+                self.end_headers()
+                self.wfile.write(image)
+            def do_DELETE(self):
+                released.set()
+                self.send_response(204)
+                self.end_headers()
+        server = ThreadingHTTPServer(('127.0.0.1', 0), Handler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        url = f'http://127.0.0.1:{server.server_port}/preview/' + 'a' * 64
+        app = Adw.Application(application_id='org.vivo.StreamViewerTest')
+        app.register(None)
+        viewer = MediaViewer(app, url, 'image/png', lambda: release_stream(url))
+        try:
+            self.assertTrue(NativeMediaTests.spin(lambda: viewer.media.get_paintable() is not None))
+            self.assertFalse(viewer.message.get_visible())
+            viewer._close()
+            self.assertTrue(released.wait(2))
+        finally:
+            viewer._close()
+            viewer.destroy()
+            server.shutdown()
+            server.server_close()
 
 
 if __name__ == '__main__':
