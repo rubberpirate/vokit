@@ -21,11 +21,10 @@ jobs:
           persist-credentials: false
       - name: Build and test source and Arch package
         run: |
-          docker run --rm -v "$PWD:/work" -w /work archlinux:base-devel bash -euc '
+          docker run --rm -e BUILDER_UID="$(id -u)" -v "$PWD:/work" -w /work archlinux:base-devel bash -euc '
             pacman -Syu --noconfirm --needed git python dbus sudo
-            useradd --create-home builder
+            useradd --create-home --uid "$BUILDER_UID" builder
             echo "builder ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/builder
-            chown -R builder:builder /work
             sudo -u builder dbus-run-session -- bash -euc "
               ./scripts/build-arch-package.sh
               cd build/arch-package
@@ -56,6 +55,6 @@ jobs:
           EOF
           gh release create "$GITHUB_REF_NAME" --verify-tag --draft --prerelease \
             --title "VOkit $GITHUB_REF_NAME" --notes-file /tmp/vokit-release-notes.md \
-            build/arch-package/vokit-*.tar.gz build/arch-package/vokit-*.pkg.tar.zst \
+            build/arch-package/vokit-*.tar.gz build/arch-package/vokit-[0-9]*.pkg.tar.zst \
             build/arch-package/SHA256SUMS
           gh release edit "$GITHUB_REF_NAME" --draft=false
