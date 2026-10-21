@@ -2,6 +2,20 @@
 
 An independent native Linux companion for compatible vivo phones, built with Go, GTK4 and libadwaita. GStreamer performs video and audio decoding in native libraries. It does not require Wine or USB debugging. This project is not affiliated with or endorsed by vivo.
 
+## Demo
+
+[Watch the demo video](rimages/demo.mp4)
+
+VOkit running on Linux with a vivo X300 FE:
+
+| File manager and phone mirroring | Live camera preview |
+| --- | --- |
+| ![VOkit file manager with thumbnails and a separate phone mirror window](rimages/screenshot-2026-10-21_17.20.12.png) | ![Live rear-camera preview in VOkit](rimages/screenshot-2026-10-21_17.21.17.png) |
+| **Phone storage** | **QR pairing** |
+| ![Browsing folders in the connected phone's storage](rimages/screenshot-2026-10-21_17.22.04.png) | ![Pairing by scanning the QR code with Office Kit on the phone](rimages/screenshot-2026-10-21_17.23.14.png) |
+
+## Features
+
 Connect the laptop and phone to the same network, open the desktop app, click **Connect phone**, and scan its QR with the phone's Office Kit connection feature. No phone IP entry or vivo-account sign-in is required: the fresh QR scan supplies the phone's private network address through vivo's rendezvous service. This QR bootstrap needs internet access. An optional IP override is available under Settings → Advanced connection. Approve the requested features on the phone. Closing the main window hides it while the connection and incoming transfers continue. Open the app again to reveal the same window; use the menu’s Quit action to stop the session.
 
 Implemented features include file browsing and upload/download, image/video thumbnails and viewing, text clipboard sync, phone screen mirroring with touch and typing, and front/rear camera sharing. The X300 FE with OriginOS 6 has been tested; 720p screen mirroring was reported smooth. Camera latency varies with network and encoder settings. Compatibility with every phone, Linux distribution and laptop is not established.
