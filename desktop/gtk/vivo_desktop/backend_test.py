@@ -129,6 +129,28 @@ class TransferBoundaryTests(unittest.TestCase):
         self.assertEqual(len(helper.bus.parameters), 1)
 
 
+class TrayActionTests(unittest.TestCase):
+    def test_mirror_shortcut_keeps_desktop_hidden(self):
+        from unittest.mock import Mock
+        from .app import OfficeApplication, _TestBackend, _TestSettings
+        app = OfficeApplication(_TestBackend(), _TestSettings(), testing=True)
+        app.window = window = Mock()
+        app._tray_action('mirror', 'activation-token')
+        window._open_mirror.assert_called_once_with('activation-token')
+        window.present.assert_not_called()
+        window.shutdown.assert_not_called()
+        app._tray_action('stop-mirror')
+        window.mirror_window.stop.assert_called_once_with()
+        window.mirror_window.set_visible.assert_called_once_with(False)
+        window.present.assert_not_called()
+        for action in ('show', 'files', 'camera', 'settings'):
+            app._tray_action(action)
+        self.assertEqual(window.present.call_count, 4)
+        window._open_camera.assert_called_once_with()
+        self.assertEqual([call.args[0] for call in window._navigate.call_args_list], ['files', 'settings'])
+        app.backend.close()
+
+
 class BatchDispatchTests(unittest.TestCase):
     @staticmethod
     def spin(condition):

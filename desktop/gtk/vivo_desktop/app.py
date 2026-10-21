@@ -1064,6 +1064,8 @@ class OfficeWindow(Adw.ApplicationWindow):
             self.media_panel.set_connected(self.connected)
         if self.mirror_window:
             self.mirror_window.set_connected(self.connected)
+        if hasattr(self.app, "update_tray"):
+            self.app.update_tray()
 
     def _connection_action(self):
         if self.owned:
@@ -1193,7 +1195,7 @@ class OfficeWindow(Adw.ApplicationWindow):
                                 "light": Adw.ColorScheme.FORCE_LIGHT,
                                 "system": Adw.ColorScheme.DEFAULT}.get(theme, Adw.ColorScheme.FORCE_DARK))
 
-    def _open_mirror(self):
+    def _open_mirror(self, activation_token=""):
         if not self.connected:
             return
         try:
@@ -1201,6 +1203,8 @@ class OfficeWindow(Adw.ApplicationWindow):
             if self.mirror_window is None:
                 self.mirror_window = MirrorWindow(self.app, self.backend)
             self.mirror_window.set_connected(self.connected)
+            if activation_token:
+                self.mirror_window.set_startup_id(activation_token)
             self.mirror_window.present()
             self.mirror_window.start()
         except (ImportError, GLib.Error, RuntimeError):
@@ -1253,6 +1257,7 @@ class OfficeApplication(Adw.Application):
         self.testing = testing
         self.window = None
         self.test_exit = 0
+        self.tray = None
 
     def do_startup(self):
         Adw.Application.do_startup(self)
@@ -1265,14 +1270,59 @@ class OfficeApplication(Adw.Application):
             self.add_action(action)
         self.set_accels_for_action("app.quit", ["<Control>q"])
         self.set_accels_for_action("app.search", ["<Control>f"])
+        if not self.testing and self.get_dbus_connection():
+            try:
+                from .tray import StatusTray
+                self.tray = StatusTray(self.get_dbus_connection(), self._tray_action)
+            except (ImportError, GLib.Error):
+                print("VOkit: system tray unavailable; reopen from the application menu.", file=sys.stderr)
         self.hold()
 
-    def do_activate(self):
+    def _ensure_window(self):
         if self.window is None:
             self.window = OfficeWindow(self)
             if self.testing:
                 GLib.timeout_add(350, self._self_test)
-        self.window.present()
+        return self.window
+
+    def do_activate(self):
+        self._ensure_window().present()
+        self.update_tray()
+
+    def update_tray(self):
+        if not self.tray or not self.window:
+            return
+        window = self.window
+        mirror = window.mirror_window
+        session = mirror.panel.session if mirror else None
+        active = bool(session and not session.closed.is_set())
+        self.tray.update(window.connected, window.owned and not window.connected,
+                         window.device_title.get_text(), window.owned, active, window.external_session)
+
+    def _tray_action(self, action, token=""):
+        if action == "quit":
+            self._quit()
+            return
+        window = self._ensure_window()
+        if token:
+            window.set_startup_id(token)
+        if action == "mirror":
+            window._open_mirror(token)
+        elif action == "stop-mirror":
+            if window.mirror_window:
+                window.mirror_window.stop()
+                window.mirror_window.set_visible(False)
+        elif action == "connection":
+            if not window.owned:
+                window.present()
+            window._connection_action()
+        else:
+            window.present()
+            if action == "camera":
+                window._open_camera()
+            elif action in ("files", "settings"):
+                window._navigate(action)
+        self.update_tray()
 
     def do_open(self, files, count, hint):
         self.activate()
@@ -1287,12 +1337,16 @@ class OfficeApplication(Adw.Application):
         self.window.search.grab_focus()
 
     def _quit(self, *_args):
+        if self.tray:
+            self.tray.close()
         if self.window:
             self.window.shutdown()
         self.backend.close()
         self.quit()
 
     def do_shutdown(self):
+        if self.tray:
+            self.tray.close()
         if self.window:
             self.window.shutdown()
         self.backend.close()
