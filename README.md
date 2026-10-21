@@ -4,9 +4,13 @@ An independent native Linux companion for compatible vivo phones, built with Go,
 
 ## Demo
 
-[Watch the demo video](rimages/demo.mp4)
 
-VOkit running on Linux with a vivo X300 FE:
+
+https://github.com/user-attachments/assets/e7aef66c-e769-4877-8e59-e77b9f24ef67
+
+
+
+VOkit running on Linux with X300 FE:
 
 | File manager and phone mirroring | Live camera preview |
 | --- | --- |
