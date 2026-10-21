@@ -1,18 +1,21 @@
 PREFIX ?= $(HOME)/.local
 GO ?= go
+PYTHON ?= python3
 
-.PHONY: build desktop test install install-desktop install-app install-files install-system-config check-packaging
+.PHONY: build desktop test test-desktop install install-desktop install-app install-files install-system-config check-packaging
 build:
 	CGO_ENABLED=0 $(GO) build -trimpath -o build/vivolinux ./cmd/vivolinux
 
 desktop:
-	cmake -S desktop -B build/desktop -DCMAKE_BUILD_TYPE=Release
-	cmake --build build/desktop --parallel 2
-	cp build/desktop/vivo-desktop-helper build/vivo-desktop-helper.next
-	mv -f build/vivo-desktop-helper.next build/vivo-desktop-helper
-	cp build/desktop/vivo-desktop build/vivo-desktop.next
-	mv -f build/vivo-desktop.next build/vivo-desktop
-	ctest --test-dir build/desktop --output-on-failure
+	$(PYTHON) -c 'import gi; gi.require_version("Gtk", "4.0"); gi.require_version("Adw", "1"); gi.require_version("Gst", "1.0"); from gi.repository import Gtk, Adw, Gst'
+	install -d build/vivo_desktop
+	install -m644 desktop/gtk/vivo_desktop/*.py desktop/gtk/vivo_desktop/*.css build/vivo_desktop/
+	install -m755 desktop/gtk/vivo-desktop desktop/gtk/vivo-desktop-helper build/
+	$(PYTHON) -m compileall -q build/vivo_desktop
+
+test-desktop: desktop
+	xvfb-run -a env GDK_BACKEND=x11 WAYLAND_DISPLAY= GSK_RENDERER=cairo GTK_THEME=Adwaita PYTHONPATH=desktop/gtk $(PYTHON) -m unittest vivo_desktop.backend_test vivo_desktop.media_test
+	xvfb-run -a env GDK_BACKEND=x11 WAYLAND_DISPLAY= GSK_RENDERER=cairo GTK_THEME=Adwaita PYTHONPATH=desktop/gtk $(PYTHON) -m vivo_desktop.app --self-test
 
 test:
 	$(GO) test -race ./...
@@ -32,6 +35,8 @@ install-files:
 	install -Dm755 build/vivolinux "$(DESTDIR)$(PREFIX)/bin/vivolinux"
 	install -Dm755 build/vivo-desktop-helper "$(DESTDIR)$(PREFIX)/bin/vivo-desktop-helper"
 	install -Dm755 build/vivo-desktop "$(DESTDIR)$(PREFIX)/bin/vivo-desktop"
+	install -d "$(DESTDIR)$(PREFIX)/lib/vivo-office-kit/vivo_desktop"
+	install -m644 desktop/gtk/vivo_desktop/__init__.py desktop/gtk/vivo_desktop/app.py desktop/gtk/vivo_desktop/backend.py desktop/gtk/vivo_desktop/helper.py desktop/gtk/vivo_desktop/media.py desktop/gtk/vivo_desktop/style.css "$(DESTDIR)$(PREFIX)/lib/vivo-office-kit/vivo_desktop/"
 	install -Dm644 packaging/desktop/vivo-office-kit.desktop "$(DESTDIR)$(PREFIX)/share/applications/vivo-office-kit.desktop"
 	install -Dm644 packaging/desktop/vivo-office-kit.svg "$(DESTDIR)$(PREFIX)/share/icons/hicolor/scalable/apps/vivo-office-kit.svg"
 	install -Dm644 README.md "$(DESTDIR)$(PREFIX)/share/doc/vivo-office-kit/README.md"

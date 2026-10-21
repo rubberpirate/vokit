@@ -1,0 +1,9 @@
+#!/usr/bin/env python3
+from pathlib import Path
+import sys
+
+directory = Path(__file__).resolve().parent
+sys.path.insert(0, str(directory))
+sys.path.insert(0, str(directory.parent/"lib/vivo-office-kit"))
+from vivo_desktop.helper import main
+raise SystemExit(main())

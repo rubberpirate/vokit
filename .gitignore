@@ -28,3 +28,8 @@ __pycache__/
 *.core
 /.idea/
 /.vscode/
+ui-reffernce-images/
+/ui-refference-images/
+/.agents/
+/.claude/
+/skills-lock.json

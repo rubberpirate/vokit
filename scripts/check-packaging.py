@@ -23,6 +23,12 @@ with tempfile.TemporaryDirectory(prefix='vivo-install-check-') as temporary:
         'usr/lib/udev/rules.d/70-vivo-phone-camera.rules',
         'etc/modprobe.d/vivo-phone-camera.conf',
         'etc/modules-load.d/vivo-phone-camera.conf',
+        'usr/lib/vivo-office-kit/vivo_desktop/__init__.py',
+        'usr/lib/vivo-office-kit/vivo_desktop/app.py',
+        'usr/lib/vivo-office-kit/vivo_desktop/backend.py',
+        'usr/lib/vivo-office-kit/vivo_desktop/helper.py',
+        'usr/lib/vivo-office-kit/vivo_desktop/media.py',
+        'usr/lib/vivo-office-kit/vivo_desktop/style.css',
     }
     actual = {str(path.relative_to(stage)) for path in stage.rglob('*') if path.is_file()}
     assert actual == expected, (actual - expected, expected - actual)
@@ -37,4 +43,4 @@ with tempfile.TemporaryDirectory(prefix='vivo-install-check-') as temporary:
 rule = (root / 'packaging/udev/70-vivo-phone-camera.rules').read_text()
 assert 'ATTR{name}=="Vivo Phone"' in rule and 'TAG+="uaccess"' in rule
 assert 'MODE="0666"' not in rule and 'GROUP=' not in rule
-print('Packaging checks passed: 10 staged files, permissions, launcher, installer validation.')
+print('Packaging checks passed: 16 staged files, permissions, GTK launchers, installer validation.')

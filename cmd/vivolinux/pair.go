@@ -26,6 +26,7 @@ import (
 
 type pairOptions struct {
 	stateDir, pin, localIP    string
+	receiveDir                string
 	phone                     netip.Addr
 	duration                  time.Duration
 	trustScanned              bool
@@ -54,6 +55,7 @@ func parsePairOptions(args []string) (pairOptions, error) {
 	var options pairOptions
 	var phone string
 	flags := flag.NewFlagSet("pair", flag.ContinueOnError)
+	flags.StringVar(&options.receiveDir, "receive-dir", "", "automatically receive phone Share files into this directory")
 	flags.StringVar(&options.stateDir, "state-dir", "build/pairing", "private pairing state directory")
 	flags.StringVar(&options.pin, "phone-cert-sha256", "", "verified phone certificate SHA-256 fingerprint")
 	flags.BoolVar(&options.trustScanned, "trust-scanned-phone", false, "explicitly trust first certificate from --phone after this scan; pin it for this session")
@@ -110,6 +112,9 @@ func parsePairOptions(args []string) (pairOptions, error) {
 		if value != "" && (!strings.HasPrefix(value, "/") || path.Clean(value) != value || strings.ContainsAny(value, "\x00\\")) {
 			return options, errors.New("phone file paths must be normalized absolute paths")
 		}
+	}
+	if options.receiveDir != "" && (!filepath.IsAbs(options.receiveDir) || filepath.Clean(options.receiveDir) != options.receiveDir || options.receiveDir == "/" || strings.ContainsAny(options.receiveDir, "\x00\\")) {
+		return options, errors.New("receive-dir must be a normalized absolute directory")
 	}
 	return options, nil
 }
@@ -343,6 +348,51 @@ func runPair(ctx context.Context, args []string) error {
 	// File jobs run concurrently with control reads/heartbeats; serialize logs.
 	oldEmit := emit
 	emit = func(event vivo.Event) { eventMutex.Lock(); defer eventMutex.Unlock(); oldEmit(event) }
+	receiveReady := false
+	if options.receiveDir != "" {
+		if err := vivo.PrepareReceiveDirectory(options.receiveDir); err != nil {
+			return err
+		}
+		receiveReady = true
+		incoming := make(chan vivo.IncomingShare, 4)
+		rejectIncoming := func(count int) {
+			data, _ := json.Marshal(map[string]int{"failCount": count, "successCount": 0, "failCode": 0})
+			select {
+			case media.requests <- append([]byte("TRANS_FILE_FAIL:"), data...):
+			default:
+			}
+		}
+		features.IncomingFileMessage = func(data []byte) {
+			share, matched, err := vivo.ParseIncomingShare(data)
+			if !matched {
+				return
+			}
+			if err != nil {
+				stage("incoming_share_rejected")
+				rejectIncoming(0)
+				return
+			}
+			select {
+			case incoming <- share:
+				stage("incoming_share_queued")
+			default:
+				stage("incoming_share_queue_full")
+				rejectIncoming(len(share.Files))
+			}
+		}
+		fileWorker.Add(1)
+		go func() {
+			defer fileWorker.Done()
+			receivePhoneShares(testCtx, options, phoneAddress, session, incoming, media.requests, func(e vivo.Event) {
+				emit(e)
+				if e.Stage == "incoming_share_completed" && options.notifications && bridge != nil {
+					if bridge.Notify(testCtx, "files_received") != nil {
+						stage("notification_unavailable")
+					}
+				}
+			})
+		}()
+	}
 	if options.clipboard {
 		features.Clipboard = bridge
 	}
@@ -424,12 +474,13 @@ func runPair(ctx context.Context, args []string) error {
 			stage("file_selection_not_in_page")
 		}()
 	}
+	localReady := make(chan error, 2)
 	fileWorker.Add(1)
 	go func() {
 		defer fileWorker.Done()
-		err := service.ServeNative(testCtx, options.nativeSocket, func(requestCtx context.Context, request service.NativeRequest) (any, error) {
+		err := service.ServeNativeReady(testCtx, options.nativeSocket, func(requestCtx context.Context, request service.NativeRequest) (any, error) {
 			if request.Method == "status" {
-				return map[string]any{"backend": "native-vivo", "connected": connected.Load(), "clipboard_enabled": options.clipboard, "file_permission": fileAllowed.Load()}, nil
+				return map[string]any{"backend": "native-vivo", "connected": connected.Load(), "clipboard_enabled": options.clipboard, "file_permission": fileAllowed.Load(), "receive_ready": receiveReady, "receive_enabled": options.receiveDir != ""}, nil
 			}
 			if !connected.Load() {
 				return nil, errors.New("phone is disconnected")
@@ -464,11 +515,7 @@ func runPair(ctx context.Context, args []string) error {
 				}
 				return result, err
 			}
-			directory := request.Directory
-			if request.Method == "download" || request.Method == "thumbnail" || request.Method == "preview" {
-				directory = path.Dir(request.Remote)
-			}
-			page, err := dataClient.ListFiles(requestCtx, session, directory, request.Page)
+			page, err := nativeRequestPage(requestCtx, dataClient, session, request)
 			if err != nil {
 				stage("file_listing_failed")
 				if errors.Is(err, vivo.ErrFilePermission) {
@@ -507,7 +554,7 @@ func runPair(ctx context.Context, args []string) error {
 				}
 			}
 			return nil, errors.New("selected file not in page")
-		})
+		}, func(err error) { localReady <- err })
 		if err != nil && testCtx.Err() == nil {
 			stage("native_rpc_unavailable")
 		}
@@ -547,10 +594,24 @@ func runPair(ctx context.Context, args []string) error {
 	fileWorker.Add(1)
 	go func() {
 		defer fileWorker.Done()
-		if err := service.ServeMedia(testCtx, filepath.Join(filepath.Dir(options.nativeSocket), "media.sock"), media.serve); err != nil && testCtx.Err() == nil {
+		if err := service.ServeMediaReady(testCtx, filepath.Join(filepath.Dir(options.nativeSocket), "media.sock"), media.serve, func(err error) { localReady <- err }); err != nil && testCtx.Err() == nil {
 			stage("media_service_unavailable")
 		}
 	}()
+	for range 2 {
+		select {
+		case err := <-localReady:
+			if err != nil {
+				stop()
+				fileWorker.Wait()
+				return errors.New("native local services could not start; close the other session or check runtime permissions")
+			}
+		case <-testCtx.Done():
+			stop()
+			fileWorker.Wait()
+			return testCtx.Err()
+		}
+	}
 	err = client.ControlWithFeatures(testCtx, session, features, emit)
 	connected.Store(false)
 	stop()

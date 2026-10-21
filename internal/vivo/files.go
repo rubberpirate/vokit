@@ -20,6 +20,8 @@ import (
 
 const MaxDownloadBytes int64 = 1 << 30
 
+var ErrDownloadExists = errors.New("download destination already exists")
+
 type FileEntry struct {
 	FileName    string `json:"fileName"`
 	SavePath    string `json:"savePath"`
@@ -27,6 +29,8 @@ type FileEntry struct {
 	Date        int64  `json:"date"`
 	IsDirectory bool   `json:"isDirectory"`
 	IsGroup     bool   `json:"isGroup,omitempty"`
+	GroupName   string `json:"groupName,omitempty"`
+	GroupTime   string `json:"groupTime,omitempty"`
 }
 
 type FilePage struct {
@@ -91,6 +95,10 @@ func (p *PhoneClient) ListFiles(ctx context.Context, s *Session, directory strin
 // Contract: shipped main.js character offsets 4474800–4481300; the body is TAR.
 // DownloadFile writes one selected regular file and never replaces a destination.
 func (p *PhoneClient) DownloadFile(ctx context.Context, s *Session, entry FileEntry, outputPath string) (DownloadResult, error) {
+	return p.downloadFile(ctx, s, entry, outputPath, "FROM_PC_FILE_MANAGER")
+}
+
+func (p *PhoneClient) downloadFile(ctx context.Context, s *Session, entry FileEntry, outputPath, transferType string) (DownloadResult, error) {
 	var result DownloadResult
 	if s == nil || s.Token == "" || !validFileEntry(entry) || entry.IsDirectory || entry.FileSize > MaxDownloadBytes {
 		return result, errors.New("invalid download selection")
@@ -103,8 +111,10 @@ func (p *PhoneClient) DownloadFile(ctx context.Context, s *Session, entry FileEn
 	// Anchor all destination operations to the opened directory, even if renamed.
 	directory := fmt.Sprintf("/proc/self/fd/%d", parent.Fd())
 	destination := filepath.Join(directory, basename)
-	if _, err := os.Lstat(destination); !errors.Is(err, os.ErrNotExist) {
-		return result, errors.New("download destination already exists or is unavailable")
+	if _, err := os.Lstat(destination); err == nil {
+		return result, ErrDownloadExists
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return result, errors.New("download destination is unavailable")
 	}
 	stage, err := os.CreateTemp(directory, ".vivo-download-*")
 	if err != nil {
@@ -121,7 +131,7 @@ func (p *PhoneClient) DownloadFile(ctx context.Context, s *Session, entry FileEn
 	id := fmt.Sprintf("%x-%x-%x-%x-%x", idBytes[:4], idBytes[4:6], idBytes[6:8], idBytes[8:10], idBytes[10:])
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Minute)
 	defer cancel()
-	body := map[string]any{"downloadList": []string{entry.SavePath}, "type": "FROM_PC_FILE_MANAGER", "total": entry.FileSize, "isDir": false, "isAlbum": false, "albumList": []string{}, "dirList": []string{}}
+	body := map[string]any{"downloadList": []string{entry.SavePath}, "type": transferType, "total": entry.FileSize, "isDir": false, "isAlbum": false, "albumList": []string{}, "dirList": []string{}}
 	// main.js 4476500 accepts HTTP 200; counts are optional progress metadata.
 	// Exact entry name/type/size are enforced on the received TAR instead.
 	if err := p.post(ctx, "/pc_file_manager/download_info?id="+id, s, body, 30*time.Second, nil); err != nil {
@@ -159,6 +169,9 @@ func (p *PhoneClient) DownloadFile(ctx context.Context, s *Session, entry FileEn
 		return DownloadResult{}, err
 	}
 	if err := os.Link(stage.Name(), destination); err != nil {
+		if errors.Is(err, os.ErrExist) {
+			return DownloadResult{}, ErrDownloadExists
+		}
 		return DownloadResult{}, errors.New("cannot commit download without replacing destination")
 	}
 	return result, nil

@@ -1,4 +1,4 @@
-// Package desktop owns the private pipe to the native Qt clipboard helper.
+// Package desktop owns the private pipe to the native desktop clipboard helper.
 package desktop
 
 import (
@@ -177,7 +177,7 @@ func (b *Bridge) Set(ctx context.Context, text string) error {
 }
 
 func (b *Bridge) Notify(ctx context.Context, state string) error {
-	if state != "connected" && state != "disconnected" && state != "connecting" {
+	if state != "connected" && state != "disconnected" && state != "connecting" && state != "files_received" {
 		return errors.New("invalid notification state")
 	}
 	return b.request(ctx, map[string]string{"op": "notify", "state": state}, b.notifications)

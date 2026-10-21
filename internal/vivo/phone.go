@@ -353,6 +353,9 @@ func (p *PhoneClient) controlFeatures(ctx context.Context, s *Session, interval 
 		}
 		if typ == websocket.MessageText {
 			emit(SummarizeMessage(data))
+			if options.IncomingFileMessage != nil {
+				options.IncomingFileMessage(data)
+			}
 			if options.CameraMessage != nil {
 				options.CameraMessage(data)
 			}

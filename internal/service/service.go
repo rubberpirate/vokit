@@ -52,23 +52,12 @@ func privateDir(path string) error {
 }
 
 func Serve(ctx context.Context, socket string, client android.Client) error {
-	if err := privateDir(socket); err != nil {
-		return err
-	}
-	// Never unlink an existing socket: another daemon may own it.
-	if _, err := os.Lstat(socket); err == nil {
-		return fmt.Errorf("socket already exists: %s (stop the daemon, or remove a stale socket manually)", socket)
-	} else if !os.IsNotExist(err) {
-		return err
-	}
-	listener, err := net.ListenUnix("unix", &net.UnixAddr{Name: socket, Net: "unix"})
+	listener, cleanup, err := listenPrivate(socket)
 	if err != nil {
 		return err
 	}
-	defer listener.Close()
-	if err := os.Chmod(socket, 0600); err != nil {
-		return err
-	}
+	defer cleanup()
+
 	started := time.Now()
 	finished := make(chan struct{})
 	defer close(finished)

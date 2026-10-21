@@ -244,3 +244,16 @@ func TestNativeConnectionLimit(t *testing.T) {
 	}
 	cancel()
 }
+
+func TestNativeCategoryScopeValidation(t *testing.T) {
+	for _, category := range []string{"recent", "images", "videos", "audio", "documents"} {
+		if !validNativeRequest(NativeRequest{Method: "files", Category: category}) || !validNativeRequest(NativeRequest{Method: "thumbnail", Category: category, Remote: "/storage/fixture.jpg", Width: 128, Height: 128, Page: 2}) {
+			t.Fatal("valid global selection rejected")
+		}
+	}
+	for _, req := range []NativeRequest{{Method: "files", Category: "invalid"}, {Method: "files", Category: "images", Directory: "/"}, {Method: "status", Category: "images"}, {Method: "upload", Category: "images", Local: "/local", Directory: "/phone"}} {
+		if validNativeRequest(req) {
+			t.Fatal("invalid category scope accepted")
+		}
+	}
+}

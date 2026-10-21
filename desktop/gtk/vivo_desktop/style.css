@@ -1,0 +1,62 @@
+:root {
+  --office-bg: var(--window-bg-color);
+  --office-card: var(--card-bg-color);
+  --office-well: color-mix(in srgb, var(--window-fg-color) 5%, var(--office-card));
+  --office-border: color-mix(in srgb, var(--window-fg-color) 10%, transparent);
+  --office-muted: color-mix(in srgb, var(--window-fg-color) 60%, transparent);
+  --accent-bg-color: #4b91ff;
+  --accent-color: #337edc;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --office-bg: #14171c; --office-card: #1c2026; --office-well: #252a32; --accent-color: #89b7ff; }
+}
+window.office-window { background: var(--office-bg); }
+.office-header { background: transparent; box-shadow: none; }
+.office-header entry { border-radius: 24px; background: var(--office-well); box-shadow: none; }
+.brand { font-size: 29px; font-weight: 750; letter-spacing: -1px; color: var(--accent-color); }
+.edition { font-size: 10px; letter-spacing: 1.6px; font-weight: 650; color: var(--office-muted); }
+.outer-nav { padding: 10px 8px; }
+.outer-nav button { background: transparent; box-shadow: none; border-radius: 12px; padding: 12px 6px; min-height: 48px; color: var(--office-muted); }
+.outer-nav button:checked { background: color-mix(in srgb, var(--accent-bg-color) 18%, transparent); color: var(--accent-color); }
+.outer-nav button:hover { background: color-mix(in srgb, var(--window-fg-color) 6%, transparent); }
+.nav-label { font-size: 11px; }
+.workspace { padding: 6px 20px 16px 10px; }
+.summary-card { background: var(--office-card); border: 1px solid var(--office-border); border-radius: 16px; padding: 18px 22px; }
+.mirror-card { background: color-mix(in srgb, var(--accent-bg-color) 9%, var(--office-card)); border-color: color-mix(in srgb, var(--accent-bg-color) 36%, transparent); }
+.device-title { font-size: 19px; font-weight: 700; }
+.mirror-title { font-size: 19px; font-weight: 600; }
+.muted { color: var(--office-muted); }
+.small { font-size: 12px; }
+.connection-pill { color: #2dbe9c; background: color-mix(in srgb, #2dbe9c 14%, transparent); border-radius: 12px; padding: 3px 8px; font-size: 10px; font-weight: 600; }
+.file-manager { background: var(--office-card); border: 1px solid var(--office-border); border-radius: 16px; }
+.category-rail { background: color-mix(in srgb, var(--office-bg) 40%, var(--office-card)); padding: 20px 10px 14px; border-radius: 15px 0 0 15px; }
+.file-heading { font-size: 21px; font-weight: 750; margin: 0 8px 16px; }
+.category-rail row { border-radius: 9px; padding: 11px 12px; margin: 2px 0; color: var(--office-muted); }
+.category-rail row:selected { background: color-mix(in srgb, var(--accent-bg-color) 18%, transparent); color: var(--accent-color); }
+.category-rail row:hover { background: color-mix(in srgb, var(--window-fg-color) 5%, transparent); }
+.file-content { padding: 17px 18px 10px; }
+.file-toolbar button { min-width: 22px; }
+.file-toolbar .suggested-action { padding: 8px 14px; }
+.breadcrumb { color: var(--office-muted); font-size: 12px; }
+.breadcrumb-entry { font-size: 12px; background: var(--office-well); border-radius: 9px; }
+.files-grid, .files-list { background: transparent; }
+.files-grid child { border-radius: 10px; padding: 0; margin: 3px; }
+.files-grid child:hover { background: color-mix(in srgb, var(--window-fg-color) 5%, transparent); }
+.files-grid child:selected, .files-list row:selected { background: color-mix(in srgb, var(--accent-bg-color) 20%, transparent); }
+.file-tile { padding: 9px; }
+.file-tile picture, .file-thumbnail { border-radius: 7px; }
+.file-name { font-size: 12px; }
+.file-size { font-size: 11px; color: var(--office-muted); }
+.file-row { padding: 8px 12px; }
+.video-play { background: rgba(12, 18, 28, .72); color: white; padding: 8px; border-radius: 30px; }
+.file-status { font-size: 11px; color: var(--office-muted); margin: 2px 3px 0; }
+.empty-title { font-size: 20px; font-weight: 650; }
+.empty-icon { color: var(--office-muted); opacity: .7; }
+.scope-note { font-size: 11px; color: var(--office-muted); margin: 22px 8px 0; }
+.settings-content { padding: 8px 18px 24px; }
+.phone-screen { border-radius:18px; background:black; }
+.camera-preview { border-radius:12px; background:black; }
+@media (prefers-contrast: more) {
+  .summary-card, .file-manager { border: 2px solid var(--window-fg-color); }
+  .muted, .file-size, .scope-note { color: var(--window-fg-color); }
+}

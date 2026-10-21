@@ -20,10 +20,10 @@ const usage = `vivolinux: experimental native vivo LAN client and ADB/scrcpy fal
 
 Usage:
   vivolinux pair [--phone LAN_IP] [--phone-cert-sha256 HEX] [--duration 5m]
-                 [--persistent] [--clipboard] [--notifications] [--file-access]
+                 [--persistent] [--clipboard] [--notifications] [--file-access] [--receive-dir DIRECTORY]
                  [--list-files PHONE_DIRECTORY] [--mirror-native]
   vivolinux native-status [--socket PATH]
-  vivolinux files [--path PHONE_DIRECTORY] [--page 0] [--socket PATH]
+  vivolinux files [--path PHONE_DIRECTORY | --category recent|images|videos|audio|documents] [--page 0] [--socket PATH]
   vivolinux download --remote PHONE_FILE --output NEW_LOCAL_FILE [--page 0]
   vivolinux upload --local LOCAL_FILE --to PHONE_DIRECTORY
   vivolinux thumbnail --remote PHONE_MEDIA [--width 128 --height 128]
@@ -39,14 +39,14 @@ Usage:
   vivolinux status [--socket PATH]
 
 Flags must precede positional arguments. Doctor and device lists emit JSON.
-The daemon stays in the foreground; use the supplied systemd user unit for background operation.
+The daemon stays in the foreground. The GTK desktop owns its paired background session.
 ADB fallback commands require separately installed adb/scrcpy and authorized USB debugging.
 Pair generates a private QR image for anonymous India-region cloud/LAN pairing.
-Install qrencode; clipboard/notifications use make desktop's Qt helper. File commands
-use the active native session and phone permission. Native preview needs ffplay.
+Install qrencode; clipboard/notifications use make desktop's GTK helper. File commands
+use the active native session and phone permission. The GTK frontend uses GStreamer for preview.
 Push/pull explicitly write files and may overwrite existing files. Automatic discovery,
 rich/file clipboard and phone notification forwarding remain planned; connection
-notifications and opt-in plain-text clipboard are implemented; virtual webcam is planned.
+notifications, opt-in plain-text clipboard and virtual webcam output are implemented.
 Mirror uses scrcpy's normal controls; camera displays a preview (Android 12+ required).
 Remote paths allow letters, digits, spaces, / . _ - and must not contain '..' segments.
 This is not a complete vivo Office Kit port and cannot guarantee every phone or laptop.

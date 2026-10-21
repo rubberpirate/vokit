@@ -11,7 +11,7 @@ import (
 
 func nativeHelper(t *testing.T) string {
 	t.Helper()
-	path, err := filepath.Abs("../../build/desktop/vivo-desktop-helper")
+	path, err := filepath.Abs("../../build/vivo-desktop-helper")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -21,7 +21,13 @@ func nativeHelper(t *testing.T) string {
 		t.Fatal(err)
 	}
 	// Never connect these tests to the host clipboard or notification daemon.
-	t.Setenv("QT_QPA_PLATFORM", "offscreen")
+	display := os.Getenv("VIVOLINUX_TEST_DISPLAY")
+	if display == "" {
+		t.Skip("run with a private Xvfb display and VIVOLINUX_TEST_DISPLAY to test the GTK helper")
+	}
+	t.Setenv("DISPLAY", display)
+	t.Setenv("WAYLAND_DISPLAY", "")
+	t.Setenv("GDK_BACKEND", "x11")
 	t.Setenv("DBUS_SESSION_BUS_ADDRESS", "unix:path="+filepath.Join(t.TempDir(), "missing-bus"))
 	return path
 }
@@ -32,7 +38,7 @@ func startNativeHelper(t *testing.T, path string, clipboard bool) *Bridge {
 	t.Cleanup(cancel)
 	b, err := Start(ctx, path, clipboard)
 	if err != nil {
-		t.Skipf("native Qt environment unavailable: %v", err)
+		t.Fatalf("native GTK helper unavailable: %v", err)
 	}
 	t.Cleanup(b.Close)
 	return b

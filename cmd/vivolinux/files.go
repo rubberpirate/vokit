@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"vivolinux/internal/service"
+	"vivolinux/internal/vivo"
 )
 
 func runNative(ctx context.Context, args []string) error {
@@ -75,11 +76,31 @@ func parseNativeOptions(args []string) (string, service.NativeRequest, error) {
 	default:
 		return "", request, errors.New("unsupported native command")
 	}
+	if request.Method == "files" || request.Method == "download" || request.Method == "preview" || request.Method == "thumbnail" {
+		flags.StringVar(&request.Category, "category", "", "global phone collection: recent, images, videos, audio, documents")
+	}
 	if err := flags.Parse(args[1:]); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return "", request, flag.ErrHelp
 		}
 		return "", request, errors.New("invalid native command options")
+	}
+	if request.Category != "" {
+		if !service.ValidFileCategory(request.Category) {
+			return "", request, errors.New("invalid media category")
+		}
+		explicitPath := false
+		flags.Visit(func(f *flag.Flag) {
+			if f.Name == "path" {
+				explicitPath = true
+			}
+		})
+		if explicitPath {
+			return "", request, errors.New("category and path cannot be combined")
+		}
+		if request.Method == "files" {
+			request.Directory = ""
+		}
 	}
 	validPath := func(value string) bool {
 		return filepath.IsAbs(value) && filepath.Clean(value) == value && !strings.ContainsAny(value, "\x00\\")
@@ -87,7 +108,7 @@ func parseNativeOptions(args []string) (string, service.NativeRequest, error) {
 	if flags.NArg() != 0 || !validPath(socket) || request.Page < 0 {
 		return "", request, errors.New("invalid native command options")
 	}
-	if request.Method == "files" && !validPath(request.Directory) {
+	if request.Method == "files" && request.Category == "" && !validPath(request.Directory) {
 		return "", request, errors.New("phone directory must be a normalized absolute path")
 	}
 	if request.Method == "thumbnail" && (!validPath(request.Remote) || request.Width < 1 || request.Width > 1024 || request.Height < 1 || request.Height > 1024) {
@@ -124,4 +145,22 @@ func parseNativeOptions(args []string) (string, service.NativeRequest, error) {
 		request.Local = local
 	}
 	return socket, request, nil
+}
+
+// Selected media is always re-listed from the same collection and page; a
+// caller-supplied path alone never authorizes an unrelated file download.
+type nativeFileLister interface {
+	ListFiles(context.Context, *vivo.Session, string, int) (vivo.FilePage, error)
+	ListMediaCategory(context.Context, *vivo.Session, string, int) (vivo.FilePage, error)
+}
+
+func nativeRequestPage(ctx context.Context, client nativeFileLister, s *vivo.Session, request service.NativeRequest) (vivo.FilePage, error) {
+	if request.Category != "" {
+		return client.ListMediaCategory(ctx, s, request.Category, request.Page)
+	}
+	directory := request.Directory
+	if request.Method != "files" {
+		directory = filepath.ToSlash(filepath.Dir(request.Remote))
+	}
+	return client.ListFiles(ctx, s, directory, request.Page)
 }

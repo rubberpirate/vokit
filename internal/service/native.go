@@ -24,6 +24,7 @@ var ErrNativeFilePermission = errors.New("phone file permission is required; app
 
 type NativeRequest struct {
 	Method    string `json:"method"`
+	Category  string `json:"category,omitempty"`
 	Directory string `json:"directory,omitempty"`
 	Remote    string `json:"remote,omitempty"`
 	Output    string `json:"output,omitempty"`
@@ -41,7 +42,18 @@ func nativeAbsolutePath(value string) bool {
 	return filepath.IsAbs(value) && filepath.Clean(value) == value && !strings.ContainsAny(value, "\x00\\")
 }
 
+func ValidFileCategory(category string) bool {
+	switch category {
+	case "recent", "images", "videos", "audio", "documents":
+		return true
+	}
+	return false
+}
+
 func validNativeRequest(req NativeRequest) bool {
+	if req.Category != "" && (!ValidFileCategory(req.Category) || (req.Method != "files" && req.Method != "download" && req.Method != "thumbnail" && req.Method != "preview")) {
+		return false
+	}
 	if req.Page < 0 {
 		return false
 	}
@@ -52,7 +64,7 @@ func validNativeRequest(req NativeRequest) bool {
 	case "status":
 		return req.Directory == "" && req.Remote == "" && req.Output == "" && req.Local == "" && req.Page == 0
 	case "files":
-		return nativeAbsolutePath(req.Directory) && req.Remote == "" && req.Output == "" && req.Local == ""
+		return ((req.Category == "" && nativeAbsolutePath(req.Directory)) || (req.Category != "" && req.Directory == "")) && req.Remote == "" && req.Output == "" && req.Local == ""
 	case "download", "preview":
 		return req.Directory == "" && nativeAbsolutePath(req.Remote) && nativeAbsolutePath(req.Output) && req.Local == ""
 	case "thumbnail":
@@ -66,23 +78,27 @@ func validNativeRequest(req NativeRequest) bool {
 // ServeNative exposes the current in-memory phone session only inside a private
 // user-owned directory. The handler must honor cancellation and enforce consent.
 func ServeNative(ctx context.Context, socket string, handler func(context.Context, NativeRequest) (any, error)) error {
+	return ServeNativeReady(ctx, socket, handler, nil)
+}
+
+// ServeNativeReady reports binding success before accepting local requests.
+func ServeNativeReady(ctx context.Context, socket string, handler func(context.Context, NativeRequest) (any, error), ready func(error)) error {
 	if handler == nil {
-		return errors.New("native request handler is required")
+		err := errors.New("native request handler is required")
+		if ready != nil {
+			ready(err)
+		}
+		return err
 	}
-	if err := privateDir(socket); err != nil {
-		return errors.New("native socket requires a private user-owned directory")
+	listener, cleanup, err := listenPrivate(socket)
+	if ready != nil {
+		ready(err)
 	}
-	if _, err := os.Lstat(socket); !errors.Is(err, os.ErrNotExist) {
-		return errors.New("native socket already exists or is unavailable")
-	}
-	listener, err := net.ListenUnix("unix", &net.UnixAddr{Name: socket, Net: "unix"})
 	if err != nil {
-		return errors.New("cannot listen on native socket")
+		return err
 	}
-	defer listener.Close()
-	if err := os.Chmod(socket, 0600); err != nil {
-		return errors.New("cannot secure native socket")
-	}
+	defer cleanup()
+
 	var mu sync.Mutex
 	connections := make(map[*net.UnixConn]struct{})
 	var workers sync.WaitGroup

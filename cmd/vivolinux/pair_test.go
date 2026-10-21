@@ -17,6 +17,7 @@ func TestPairRejectsInvalidOptionsBeforeNetwork(t *testing.T) {
 		{"--local-ip", "not-an-ip"}, {"--phone", "localhost"},
 		{"--phone", "::ffff:10.1.2.3%wlan0"},
 		{"--trust-scanned-phone"},
+		{"--receive-dir", "relative"}, {"--receive-dir", "/"}, {"--receive-dir", "/tmp/../unsafe"},
 		{"--phone", "10.1.2.3", "--trust-scanned-phone", "--phone-cert-sha256", strings.Repeat("a", 64)},
 	} {
 		if _, err := parsePairOptions(args); err == nil {

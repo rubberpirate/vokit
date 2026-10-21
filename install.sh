@@ -28,7 +28,7 @@ fi
 . /etc/os-release
 family=" ${ID:-} ${ID_LIKE:-} "
 if [[ "$family" == *arch* || "$family" == *cachyos* ]]; then
-    packages=(base-devel go cmake pkgconf qt6-base qt6-multimedia qt6-svg qt6-wayland ffmpeg qrencode wl-clipboard pipewire-audio xdg-utils python)
+    packages=(go make python-gobject python-cairo gtk4 libadwaita gstreamer gst-plugins-base gst-plugins-good gst-plugins-bad gst-libav qrencode wl-clipboard pipewire-audio xdg-utils)
     pkgcmd=(sudo pacman -S --needed)
     if ((webcam)); then
         kernelbase=$(cat "/usr/lib/modules/$(uname -r)/pkgbase" 2>/dev/null || true)
@@ -36,7 +36,7 @@ if [[ "$family" == *arch* || "$family" == *cachyos* ]]; then
         packages+=(v4l2loopback-dkms "${kernelbase}-headers")
     fi
 elif [[ "$family" == *debian* || "$family" == *ubuntu* ]]; then
-    packages=(build-essential golang-go cmake pkg-config qt6-base-dev qt6-multimedia-dev qt6-svg-dev qt6-wayland libavcodec-dev libavutil-dev libswscale-dev libswresample-dev qrencode wl-clipboard pipewire-bin xdg-utils python3)
+    packages=(golang-go make python3-gi python3-gi-cairo gir1.2-gtk-4.0 gir1.2-adw-1 gir1.2-gstreamer-1.0 gir1.2-gst-plugins-base-1.0 libgtk-4-media-gstreamer gstreamer1.0-gtk4 gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-libav qrencode wl-clipboard pipewire-bin xdg-utils)
     pkgcmd=(sudo apt-get install)
     ((webcam == 0)) || packages+=(v4l2loopback-dkms "linux-headers-$(uname -r)")
 else

@@ -9,7 +9,6 @@ import (
 	"errors"
 	"io"
 	"net"
-	"os"
 	"path/filepath"
 	"sync"
 	"time"
@@ -77,20 +76,27 @@ func (s *MediaChannel) Info(info any) error {
 
 // ServeMedia permits one camera and one screen consumer. Tokens stay private.
 func ServeMedia(ctx context.Context, socket string, handler func(context.Context, MediaRequest, *MediaChannel) error) error {
-	if handler == nil || privateDir(socket) != nil {
-		return errors.New("media socket requires private state and a handler")
+	return ServeMediaReady(ctx, socket, handler, nil)
+}
+
+// ServeMediaReady reports binding success before accepting preview consumers.
+func ServeMediaReady(ctx context.Context, socket string, handler func(context.Context, MediaRequest, *MediaChannel) error, ready func(error)) error {
+	if handler == nil {
+		err := errors.New("media handler is required")
+		if ready != nil {
+			ready(err)
+		}
+		return err
 	}
-	if _, err := os.Lstat(socket); !errors.Is(err, os.ErrNotExist) {
-		return errors.New("media socket already exists or is unavailable")
+	listener, cleanup, err := listenPrivate(socket)
+	if ready != nil {
+		ready(err)
 	}
-	listener, err := net.ListenUnix("unix", &net.UnixAddr{Name: socket, Net: "unix"})
 	if err != nil {
-		return errors.New("cannot listen on media socket")
+		return err
 	}
-	defer listener.Close()
-	if err := os.Chmod(socket, 0600); err != nil {
-		return errors.New("cannot secure media socket")
-	}
+	defer cleanup()
+
 	var workers sync.WaitGroup
 	slots := make(chan struct{}, 4)
 	var sourceMu sync.Mutex

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.."
-version=0.1.0
+version=0.3.0
 output=${1:-build/arch-package}
 mkdir -p -- "$output"
 output=$(realpath -- "$output")
@@ -17,7 +17,7 @@ with tarfile.open(sys.argv[1], 'w:gz') as archive:
         for path in paths:
             if not path.is_file() or path.is_symlink() or '__pycache__' in path.parts:
                 continue
-            if entry.is_dir() and path.suffix not in ('.go', '.cpp', '.h', '.txt', '.py', '.sh', '.desktop', '.svg', '.rules', '.conf', '.service', '.install') and path.name not in ('CMakeLists.txt', 'PKGBUILD'):
+            if entry.is_dir() and path.suffix not in ('.go', '.py', '.css', '.sh', '.desktop', '.svg', '.rules', '.conf', '.install') and path.name not in ('PKGBUILD', 'vivo-desktop', 'vivo-desktop-helper'):
                 continue
             archive.add(path, arcname=f'vivo-office-kit-linux-{sys.argv[2]}/{path.relative_to(root)}', recursive=False)
 PY

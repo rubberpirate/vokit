@@ -187,3 +187,24 @@ func TestClipboardSetTimeoutStopsHelper(t *testing.T) {
 		t.Fatal("clipboard timeout did not stop helper")
 	}
 }
+
+func TestReceivedFilesNotificationUsesFixedState(t *testing.T) {
+	reader, writer := io.Pipe()
+	defer reader.Close()
+	defer writer.Close()
+	b := &Bridge{input: writer, done: make(chan struct{}), notifications: make(chan acknowledgement, 1)}
+	got := make(chan map[string]string, 1)
+	go func() {
+		var value map[string]string
+		_ = json.NewDecoder(reader).Decode(&value)
+		got <- value
+		b.notifications <- acknowledgement{ID: value["id"], OK: true}
+	}()
+	if err := b.Notify(context.Background(), "files_received"); err != nil {
+		t.Fatal(err)
+	}
+	value := <-got
+	if value["op"] != "notify" || value["state"] != "files_received" || len(value) != 3 {
+		t.Fatal("notification exposed unexpected metadata")
+	}
+}

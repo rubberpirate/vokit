@@ -28,6 +28,7 @@ type ControlOptions struct {
 	Connected              func()
 	MainRequests           <-chan []byte
 	CameraMessage          func([]byte)
+	IncomingFileMessage    func([]byte)
 	MirrorPermissionState  func(bool)
 }
 
