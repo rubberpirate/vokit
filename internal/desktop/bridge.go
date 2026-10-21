@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 	"unicode/utf8"
@@ -181,6 +182,19 @@ func (b *Bridge) Notify(ctx context.Context, state string) error {
 		return errors.New("invalid notification state")
 	}
 	return b.request(ctx, map[string]string{"op": "notify", "state": state}, b.notifications)
+}
+
+// NotifyPhone carries bounded text only; no phone-supplied executable or icon path.
+func (b *Bridge) NotifyPhone(ctx context.Context, app, title, body string) error {
+	for _, field := range []struct {
+		value string
+		limit int
+	}{{app, 256}, {title, 1024}, {body, 8192}} {
+		if len(field.value) > field.limit || !utf8.ValidString(field.value) || strings.ContainsRune(field.value, 0) {
+			return errors.New("invalid phone notification text")
+		}
+	}
+	return b.request(ctx, map[string]string{"op": "phone_notification", "app": app, "title": title, "body": body}, b.notifications)
 }
 
 func (b *Bridge) request(ctx context.Context, value map[string]string, ack <-chan acknowledgement) error {

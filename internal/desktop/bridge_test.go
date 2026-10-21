@@ -208,3 +208,27 @@ func TestReceivedFilesNotificationUsesFixedState(t *testing.T) {
 		t.Fatal("notification exposed unexpected metadata")
 	}
 }
+
+func TestPhoneNotificationUsesBoundedPrivateHelperRequest(t *testing.T) {
+	reader, writer := io.Pipe()
+	defer reader.Close()
+	defer writer.Close()
+	b := &Bridge{input: writer, done: make(chan struct{}), notifications: make(chan acknowledgement, 1)}
+	received := make(chan map[string]string, 1)
+	go func() {
+		var value map[string]string
+		_ = json.NewDecoder(reader).Decode(&value)
+		received <- value
+		b.notifications <- acknowledgement{ID: value["id"], OK: true}
+	}()
+	if err := b.NotifyPhone(context.Background(), "Fixture app", "Fixture title", "<b>Fixture body</b>"); err != nil {
+		t.Fatal(err)
+	}
+	value := <-received
+	if value["op"] != "phone_notification" || value["app"] != "Fixture app" || value["body"] != "<b>Fixture body</b>" {
+		t.Fatal("phone notification lost")
+	}
+	if b.NotifyPhone(context.Background(), strings.Repeat("x", 257), "title", "body") == nil {
+		t.Fatal("oversized notification accepted")
+	}
+}

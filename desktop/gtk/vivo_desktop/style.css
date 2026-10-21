@@ -60,3 +60,4 @@ window.office-window { background: var(--office-bg); }
   .summary-card, .file-manager { border: 2px solid var(--window-fg-color); }
   .muted, .file-size, .scope-note { color: var(--window-fg-color); }
 }
+.file-checkbox { background: color-mix(in srgb, var(--window-bg-color) 92%, transparent); border-radius: 6px; padding: 2px; }

@@ -4,13 +4,13 @@ post_install() {
         udevadm trigger --subsystem-match=video4linux || true
     fi
     if [ -d /sys/module/v4l2loopback ]; then
-        echo 'Vivo: existing virtual camera module kept running; select its Vivo Phone device.'
+        echo 'VOkit: existing virtual camera module kept running; select its Vivo Phone device.'
     elif command -v modinfo >/dev/null 2>&1 && modinfo v4l2loopback >/dev/null 2>&1; then
-        modprobe v4l2loopback || echo 'Vivo: module load failed; check DKMS, running-kernel headers and Secure Boot signing.'
+        modprobe v4l2loopback || echo 'VOkit: module load failed; check DKMS, running-kernel headers and Secure Boot signing.'
     else
-        echo 'Vivo webcam: install v4l2loopback-dkms plus headers matching the running kernel, then reboot.'
+        echo 'VOkit webcam: install v4l2loopback-dkms plus headers matching the running kernel, then reboot.'
     fi
-    echo 'Vivo: run vivo-desktop as your regular user. Phone consent prompts remain interactive.'
+    echo 'VOkit: run vokit as your regular user. Phone consent prompts remain interactive.'
 }
 
 post_upgrade() {

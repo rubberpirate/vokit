@@ -467,6 +467,22 @@ def _button(icon, label, callback):
     return button
 
 
+class MirrorPicture(Gtk.Picture):
+    """Keep window measurements independent of the decoder's full resolution."""
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.fitted_size = (360, 780)
+
+    def do_measure(self, orientation, for_size):
+        size = self.fitted_size[0 if orientation == Gtk.Orientation.HORIZONTAL else 1]
+        return size, size, -1, -1
+
+    def fit(self, width, height):
+        if self.fitted_size != (width, height):
+            self.fitted_size = (width, height)
+            self.queue_resize()
+
+
 class MediaPanel(Gtk.Box):
     def __init__(self, backend, mode='camera'):
         super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=10)
@@ -478,7 +494,9 @@ class MediaPanel(Gtk.Box):
         self.point = None
         self.origin = (0, 0)
         self.screen_quality = '720p'
-        self.picture = Gtk.Picture(can_shrink=True, content_fit=Gtk.ContentFit.CONTAIN, hexpand=True, vexpand=True)
+        picture_type = MirrorPicture if mode == 'screen' else Gtk.Picture
+        self.picture = picture_type(can_shrink=True, content_fit=Gtk.ContentFit.CONTAIN, hexpand=True, vexpand=True)
+        self.geometry_changed = None
         self.picture.set_focusable(mode == 'screen')
         self.picture.update_property([Gtk.AccessibleProperty.LABEL], ['Live phone screen. Tap, swipe or type.' if mode == 'screen' else 'Live phone camera'])
         self.frame = Gtk.AspectFrame(ratio=720 / 1560 if mode == 'screen' else 16 / 9, obey_child=False, hexpand=True, vexpand=True)
@@ -590,6 +608,8 @@ class MediaPanel(Gtk.Box):
 
     def _geometry(self, width, height):
         self.frame.set_ratio(width / height)
+        if self.geometry_changed:
+            self.geometry_changed(width, height)
 
     def _source_changed(self, *_):
         if self.session:
@@ -708,8 +728,14 @@ class MediaPanel(Gtk.Box):
 
 class MirrorWindow(Adw.Window):
     def __init__(self, app, backend):
-        super().__init__(application=app, title='Phone mirror', default_width=400, default_height=850)
+        super().__init__(application=app, title='Phone mirror', resizable=False)
+        self.set_size_request(0, 0)
         self.panel = MediaPanel(backend, mode='screen')
+        self.panel.geometry_changed = self._fit_phone
+        self.panel.frame.set_vexpand(False)
+        self.panel.frame.set_hexpand(False)
+        self.panel.frame.set_halign(Gtk.Align.CENTER)
+        self.panel.frame.set_valign(Gtk.Align.START)
         self.panel.set_spacing(4)
         self.panel.set_margin_start(4)
         self.panel.set_margin_end(4)
@@ -717,7 +743,8 @@ class MirrorWindow(Adw.Window):
         toolbar = Adw.ToolbarView()
         header = Adw.HeaderBar()
         header.add_css_class('flat')
-        header.set_title_widget(Gtk.Label(label='Phone mirror'))
+        header.set_title_widget(Gtk.Label(label=''))
+        header.set_decoration_layout(':minimize,close')
         menu = Gio.Menu()
         quality_menu = Gio.Menu()
         self.actions = Gio.SimpleActionGroup()
@@ -744,6 +771,19 @@ class MirrorWindow(Adw.Window):
         toolbar.set_content(self.panel)
         self.set_content(toolbar)
         self.connect('close-request', self._close)
+        self._fit_phone(720, 1560)
+
+    def _fit_phone(self, width, height):
+        display = self.get_display()
+        surface = self.get_surface()
+        monitor = display.get_monitor_at_surface(surface) if surface else display.get_monitors().get_item(0)
+        bounds = monitor.get_geometry() if monitor else None
+        max_width = min(800, (bounds.width - 80) if bounds else 800)
+        max_height = min(1000, (bounds.height - 160) if bounds else 800)
+        scale = min(400 / min(width, height), max_width / width, max_height / height)
+        fitted = (max(1, round(width * scale)), max(1, round(height * scale)))
+        self.panel.picture.fit(*fitted)
+        self.set_default_size(fitted[0] + 8, -1)
 
     def _close(self, *_):
         self.stop()

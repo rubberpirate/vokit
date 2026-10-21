@@ -20,7 +20,7 @@ import (
 	"time"
 )
 
-func TestUploadStreamsExactFileWithNewNameAndLocalHash(t *testing.T) {
+func TestUploadStreamsExactFileWithOriginalNameAndLocalHash(t *testing.T) {
 	for _, content := range [][]byte{nil, bytes.Repeat([]byte("safe fixture\x00\xff"), 100000)} {
 		t.Run(fmt.Sprintf("size=%d", len(content)), func(t *testing.T) {
 			local := filepath.Join(t.TempDir(), "private-original.TXT")
@@ -55,7 +55,7 @@ func TestUploadStreamsExactFileWithNewNameAndLocalHash(t *testing.T) {
 						return
 					}
 					name = body.DropFileItems[0].FileName
-					if len(id) != 36 || body.ID != id || body.Type != "TO_PC_FILE_MANAGER" || body.SavePath != "/storage/emulated/0/Download" || body.TotalCount != 1 || body.TotalSize != int64(len(content)) || body.DropFileItems[0].FileSize != int64(len(content)) || body.DropFileItems[0].IfDuplicated != "rename" || !strings.HasPrefix(name, "vivo-transfer-") || !strings.HasSuffix(name, ".txt") || strings.Contains(name, "private-original") {
+					if len(id) != 36 || body.ID != id || body.Type != "TO_PC_FILE_MANAGER" || body.SavePath != "/storage/emulated/0/Download" || body.TotalCount != 1 || body.TotalSize != int64(len(content)) || body.DropFileItems[0].FileSize != int64(len(content)) || body.DropFileItems[0].IfDuplicated != "rename" || name != filepath.Base(local) {
 						t.Error("incorrect upload metadata or collision policy")
 					}
 					fmt.Fprint(w, `{"status":0}`)

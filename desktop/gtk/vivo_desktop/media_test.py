@@ -73,7 +73,7 @@ class NativeMediaTests(unittest.TestCase):
         from gi.repository import GLib
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
-            while GLib.MainContext.default().pending():
+            while GLib.MainContext.default().pending() and time.monotonic() < deadline:
                 GLib.MainContext.default().iteration(False)
             if condition():
                 return True
@@ -136,6 +136,25 @@ class NativeMediaTests(unittest.TestCase):
         app.register(None)
         window = MirrorWindow(app, backend)
         window.destroy()
+
+    def test_mirror_fits_portrait_and_landscape_without_empty_frame(self):
+        from .media import Adw, MirrorWindow
+        Adw.init()
+        app = Adw.Application(application_id='org.vokit.MirrorFitTest')
+        app.register(None)
+        window = MirrorWindow(app, SimpleNamespace(media_socket='/tmp/not-used'))
+        try:
+            window.present()
+            for width, height in ((720, 1560), (1560, 720)):
+                window.panel._geometry(width, height)
+                target_width, target_height = window.panel.picture.fitted_size
+                self.assertTrue(self.spin(lambda: abs(window.panel.picture.get_width() - target_width) <= 2
+                                          and abs(window.panel.picture.get_height() - target_height) <= 2))
+                self.assertAlmostEqual(target_width / target_height, width / height, delta=.005)
+                self.assertLessEqual(abs(window.panel.frame.get_width() - target_width), 2)
+                self.assertLessEqual(abs(window.panel.frame.get_height() - target_height), 2)
+        finally:
+            window.destroy()
 
     def test_microphone_is_not_created_without_decoded_audio(self):
         from .media import PhoneAudio

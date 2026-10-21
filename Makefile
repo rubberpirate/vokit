@@ -40,6 +40,7 @@ install-files:
 	install -Dm755 build/vokit "$(DESTDIR)$(PREFIX)/bin/vokit"
 	install -d "$(DESTDIR)$(PREFIX)/lib/vivo-office-kit/vivo_desktop"
 	install -m644 desktop/gtk/vivo_desktop/__init__.py desktop/gtk/vivo_desktop/app.py desktop/gtk/vivo_desktop/backend.py desktop/gtk/vivo_desktop/helper.py desktop/gtk/vivo_desktop/media.py desktop/gtk/vivo_desktop/style.css "$(DESTDIR)$(PREFIX)/lib/vivo-office-kit/vivo_desktop/"
+	install -Dm644 packaging/thunar/vokit.desktop "$(DESTDIR)$(PREFIX)/share/Thunar/sendto/vokit.desktop"
 	install -Dm644 packaging/desktop/vivo-office-kit.desktop "$(DESTDIR)$(PREFIX)/share/applications/vivo-office-kit.desktop"
 	install -Dm644 packaging/desktop/vivo-office-kit.svg "$(DESTDIR)$(PREFIX)/share/icons/hicolor/scalable/apps/vivo-office-kit.svg"
 	install -Dm644 README.md "$(DESTDIR)$(PREFIX)/share/doc/vivo-office-kit/README.md"

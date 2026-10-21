@@ -1,4 +1,5 @@
 import os
+import json
 from pathlib import Path
 import tempfile
 import threading
@@ -77,6 +78,107 @@ class BackendTests(unittest.TestCase):
         self.assertEqual(value["exit"], 0)
         self.assertEqual(events[0]["stage"], "control_connected")
         backend.close()
+
+
+class TransferBoundaryTests(unittest.TestCase):
+    def test_batch_download_names_preserve_existing_files(self):
+        from .app import available_download_path, valid_download_receipt
+        with tempfile.TemporaryDirectory() as directory:
+            original = Path(directory) / 'photo.jpg'
+            original.write_bytes(b'keep')
+            (Path(directory) / 'photo (2).jpg').write_bytes(b'keep too')
+            self.assertEqual(Path(available_download_path(directory, 'photo.jpg')).name, 'photo (3).jpg')
+            for name in ('../escape', '/escape', '.', 'bad\\name'):
+                with self.assertRaises(ValueError): available_download_path(directory, name)
+            self.assertEqual(original.read_bytes(), b'keep')
+        self.assertTrue(valid_download_receipt({'bytes':12,'sha256':'a'*64}, 12))
+        self.assertFalse(valid_download_receipt({'bytes':13,'sha256':'a'*64}, 12))
+        self.assertFalse(valid_download_receipt({'bytes':12,'sha256':'x'*64}, 12))
+
+    def test_phone_notifications_escape_markup_and_reject_oversized_text(self):
+        from .helper import Helper
+        class Bus:
+            def __init__(self): self.parameters = []
+            def call(self, *args):
+                self.parameters.append(args[4].unpack())
+                args[-1](self, None)
+            def call_finish(self, result): pass
+        helper = Helper.__new__(Helper)
+        helper.stopping, helper.bus = False, Bus()
+        acknowledgements = []
+        helper.emit = acknowledgements.append
+        helper.request(json.dumps({'op':'phone_notification','id':'1','app':'Fixture app',
+                                   'title':'Fixture title','body':'<b>Fixture & text</b>'}))
+        self.assertEqual(helper.bus.parameters[0][4], '&lt;b&gt;Fixture &amp; text&lt;/b&gt;')
+        self.assertTrue(acknowledgements[-1]['ok'])
+        helper.request(json.dumps({'op':'phone_notification','id':'2','app':'Fixture app',
+                                   'title':'x'*1025,'body':'body'}))
+        self.assertFalse(acknowledgements[-1]['ok'])
+        self.assertEqual(len(helper.bus.parameters), 1)
+
+
+class BatchDispatchTests(unittest.TestCase):
+    @staticmethod
+    def spin(condition):
+        import time
+        deadline = time.monotonic() + 3
+        while time.monotonic() < deadline:
+            while GLib.MainContext.default().pending() and time.monotonic() < deadline:
+                GLib.MainContext.default().iteration(False)
+            if condition(): return True
+            time.sleep(.003)
+        return False
+
+    def test_send_queue_and_batch_download_use_all_selected_files(self):
+        from unittest.mock import patch
+        from .app import Adw, OfficeWindow, _TestBackend, _TestSettings
+        from gi.repository import Gio
+        class Backend(_TestBackend):
+            def call(self, args, done):
+                if args[0] in ('upload', 'download'):
+                    self.calls.append(args)
+                    GLib.idle_add(lambda: done({'bytes':12,'sha256':'a'*64}, None) or False)
+                else:
+                    super().call(args, done)
+        backend = Backend()
+        app = Adw.Application(application_id="org.vokit.BatchDispatchTest")
+        app.backend, app.settings = backend, _TestSettings()
+        app.register(None)
+        window = OfficeWindow(app)
+        try:
+            self.assertTrue(self.spin(lambda: window.connected and window.store.get_n_items() >= 3))
+            with tempfile.TemporaryDirectory() as directory:
+                files = []
+                for name in ('with spaces.txt', 'literal$(name).txt'):
+                    path = Path(directory)/name
+                    path.write_text('fixture text')
+                    files.append(Gio.File.new_for_path(str(path)))
+                window.send_files(files)
+                self.assertTrue(self.spin(lambda: not window.transfer_busy and not window.pending_sends))
+                uploads = [args for args in backend.calls if args[0] == 'upload']
+                self.assertEqual([args[args.index('--local')+1] for args in uploads], [file.get_path() for file in files])
+                self.assertTrue(all(args[-1] == '/storage/emulated/0/Download' for args in uploads))
+                items = [window.store.get_item(0), window.store.get_item(1)]
+                for item in items: item.size = 12
+                class Dialog:
+                    def __init__(self, **kwargs): pass
+                    def select_folder(self, parent, cancel, callback): callback(self, None)
+                    def select_folder_finish(self, result): return Gio.File.new_for_path(directory)
+                with patch('vivo_desktop.app.Gtk.FileDialog', Dialog):
+                    window._download_many(items)
+                self.assertTrue(self.spin(lambda: not window.transfer_busy))
+                downloads = [args for args in backend.calls if args[0] == 'download']
+                self.assertEqual(len(downloads), 2)
+                for args, item in zip(downloads, items):
+                    self.assertEqual(args[args.index('--remote')+1], item.path)
+                    self.assertEqual(args[args.index('--page')+1], str(item.page))
+                    self.assertEqual(args[args.index('--category')+1], item.category)
+                self.assertEqual(window.receipt.get_text(), 'Saved 2 of 2 files')
+                self.assertLessEqual(sum(args[0] == 'native-status' for args in backend.calls), 2)
+        finally:
+            window.shutdown()
+            window.destroy()
+            backend.close()
 
 
 if __name__ == "__main__":

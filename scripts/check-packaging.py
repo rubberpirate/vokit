@@ -15,7 +15,7 @@ with tempfile.TemporaryDirectory(prefix='vivo-install-check-') as temporary:
     # Staging requires built binaries, and cannot accidentally rebuild or run them.
     result = subprocess.run(['make', '-C', str(root), 'PREFIX=/usr', f'DESTDIR={stage}', 'install-files', 'install-system-config'], check=True, capture_output=True, text=True)
     expected = {
-        'usr/bin/vivolinux', 'usr/bin/vokit', 'usr/bin/vivo-desktop', 'usr/bin/vivo-desktop-helper',
+        'usr/share/Thunar/sendto/vokit.desktop', 'usr/bin/vivolinux', 'usr/bin/vokit', 'usr/bin/vivo-desktop', 'usr/bin/vivo-desktop-helper',
         'usr/share/applications/vivo-office-kit.desktop',
         'usr/share/icons/hicolor/scalable/apps/vivo-office-kit.svg',
         'usr/share/doc/vivo-office-kit/README.md',
@@ -43,4 +43,4 @@ with tempfile.TemporaryDirectory(prefix='vivo-install-check-') as temporary:
 rule = (root / 'packaging/udev/70-vivo-phone-camera.rules').read_text()
 assert 'ATTR{name}=="Vivo Phone"' in rule and 'TAG+="uaccess"' in rule
 assert 'MODE="0666"' not in rule and 'GROUP=' not in rule
-print('Packaging checks passed: 17 staged files, permissions, GTK launchers, installer validation.')
+print('Packaging checks passed: 18 staged files, permissions, GTK launchers, installer validation.')

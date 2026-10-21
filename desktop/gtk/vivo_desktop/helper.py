@@ -99,12 +99,21 @@ class Helper:
                 if ok:
                     self.clipboard.set(text)
                 self.acknowledge("set",ok,value)
-            elif value.get("op")=="notify":
+            elif value.get("op") in ("notify", "phone_notification"):
                 state = value.get("state")
-                if not self.bus or state not in MESSAGES:
+                phone_notification = value.get("op") == "phone_notification"
+                if phone_notification:
+                    fields = [(value.get("app"), 256), (value.get("title"), 1024), (value.get("body"), 8192)]
+                    valid = all(isinstance(text, str) and "\x00" not in text and len(text.encode("utf-8")) <= limit for text, limit in fields)
+                    title = " · ".join(text for text in (value.get("app"), value.get("title")) if isinstance(text, str) and text) or "Phone notification"
+                    body = GLib.markup_escape_text(value.get("body", "")) if valid else ""
+                else:
+                    valid = state in MESSAGES
+                    title, body = "VOkit", MESSAGES.get(state, "")
+                if not self.bus or not valid:
                     self.acknowledge("notification",False,value)
                 else:
-                    parameters = GLib.Variant("(susssasa{sv}i)",("VOkit",0,"phone-symbolic","VOkit",MESSAGES[state],[],{"urgency":GLib.Variant("y",1)},4000))
+                    parameters = GLib.Variant("(susssasa{sv}i)",("VOkit",0,"phone-symbolic",title,body,[],{"urgency":GLib.Variant("y",1)},4000))
                     def completed(connection,result):
                         try: connection.call_finish(result); ok=True
                         except GLib.Error: ok=False

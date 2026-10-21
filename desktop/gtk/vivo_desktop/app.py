@@ -122,6 +122,23 @@ def decode_thumbnail(result):
         return None
 
 
+def available_download_path(folder, name):
+    if not name or name in (".", "..") or any(char in name for char in ("/", "\\", "\x00")):
+        raise ValueError("Invalid file name")
+    candidate = Path(folder) / name
+    index = 2
+    while os.path.lexists(candidate):
+        candidate = Path(folder) / f"{Path(name).stem} ({index}){Path(name).suffix}"
+        index += 1
+    return str(candidate)
+
+
+def valid_download_receipt(receipt, size):
+    return (isinstance(receipt, dict) and receipt.get("bytes") == size
+            and isinstance(receipt.get("sha256"), str) and len(receipt["sha256"]) == 64
+            and all(char in "0123456789abcdefABCDEF" for char in receipt["sha256"]))
+
+
 class OfficeWindow(Adw.ApplicationWindow):
     def __init__(self, app):
         super().__init__(application=app, title="VOkit")
@@ -150,6 +167,9 @@ class OfficeWindow(Adw.ApplicationWindow):
         self.mirror_window = None
         self.qr_dialog = None
         self.preview_busy = False
+        self.transfer_busy = False
+        self.pending_sends = deque()
+        self.selection_updating = False
         self.viewers = set()
         self.nav_labels = []
         self.nav_buttons = {}
@@ -165,7 +185,10 @@ class OfficeWindow(Adw.ApplicationWindow):
         self._build_ui()
         self._apply_theme(self.preferences.get("theme", "dark"))
         self.poll_source = GLib.timeout_add_seconds(3, self._poll_status)
-        GLib.idle_add(self._poll_status)
+        def initial_status():
+            self._poll_status()
+            return GLib.SOURCE_REMOVE
+        GLib.idle_add(initial_status)
 
     def _build_ui(self):
         toolbar = Adw.ToolbarView()
@@ -316,6 +339,10 @@ class OfficeWindow(Adw.ApplicationWindow):
         self.preview_button = icon_button("document-open-symbolic", "Open selected file preview", self._open_selected)
         controls.append(self.download_button)
         controls.append(self.preview_button)
+        self.select_all = Gtk.CheckButton(tooltip_text="Select all loaded files")
+        self.select_all.update_property([Gtk.AccessibleProperty.LABEL], ["Select all loaded files"])
+        self.select_all.connect("toggled", self._select_all_files)
+        controls.append(self.select_all)
         grid_button = Gtk.ToggleButton(icon_name="view-grid-symbolic", tooltip_text="Thumbnail grid")
         list_button = Gtk.ToggleButton(icon_name="view-list-symbolic", tooltip_text="File list")
         grid_button.set_group(list_button)
@@ -346,10 +373,8 @@ class OfficeWindow(Adw.ApplicationWindow):
         self.store = Gio.ListStore.new(FileItem)
         self.filter = Gtk.CustomFilter.new(lambda item: self.query in item.name.casefold())
         self.filtered = Gtk.FilterListModel.new(self.store, self.filter)
-        self.selection = Gtk.SingleSelection.new(self.filtered)
-        self.selection.set_autoselect(False)
-        self.selection.set_can_unselect(True)
-        self.selection.connect("notify::selected-item", lambda *_: self._update_controls())
+        self.selection = Gtk.MultiSelection.new(self.filtered)
+        self.selection.connect("selection-changed", lambda *_: self._update_controls())
         self.file_views = Gtk.Stack(vexpand=True, hexpand=True)
         self.grid = Gtk.GridView.new(self.selection, self._file_factory(False))
         self.grid.set_min_columns(1)
@@ -414,6 +439,25 @@ class OfficeWindow(Adw.ApplicationWindow):
             play.set_halign(Gtk.Align.CENTER)
             play.set_valign(Gtk.Align.CENTER)
             overlay.add_overlay(play)
+            checked = Gtk.CheckButton(halign=Gtk.Align.END, valign=Gtk.Align.START,
+                                      tooltip_text="Select file", margin_end=3, margin_top=3)
+            checked.add_css_class("file-checkbox")
+            checked.update_property([Gtk.AccessibleProperty.LABEL], ["Select file"])
+            overlay.add_overlay(checked)
+            list_item.check_binding = False
+            def toggled(current):
+                position = list_item.get_position()
+                if not list_item.check_binding and position < self.filtered.get_n_items():
+                    if current.get_active():
+                        self.selection.select_item(position, False)
+                    else:
+                        self.selection.unselect_item(position)
+            checked.connect("toggled", toggled)
+            def selected_changed(*_):
+                list_item.check_binding = True
+                checked.set_active(list_item.get_selected())
+                list_item.check_binding = False
+            list_item.connect("notify::selected", selected_changed)
             tile.append(overlay)
             name = label("", "file-name", wrap=True, wrap_mode=Pango.WrapMode.WORD_CHAR,
                          ellipsize=Pango.EllipsizeMode.END, lines=2)
@@ -427,13 +471,17 @@ class OfficeWindow(Adw.ApplicationWindow):
             size = label("", "file-size")
             tile.append(size)
             list_item.set_child(tile)
-            list_item.parts = (picture, fallback, play, name, size)
+            list_item.parts = (picture, fallback, play, name, size, checked)
             list_item.texture_handler = None
             list_item.bound_item = None
 
         def bind(_factory, list_item):
             item = list_item.get_item()
-            picture, fallback, play, name, size = list_item.parts
+            picture, fallback, play, name, size, checked = list_item.parts
+            checked.set_sensitive(not item.folder)
+            list_item.check_binding = True
+            checked.set_active(list_item.get_selected())
+            list_item.check_binding = False
             name.set_text(item.name)
             name.set_tooltip_text(item.name)
             size.set_text("Folder" if item.folder else GLib.format_size(item.size))
@@ -497,7 +545,8 @@ class OfficeWindow(Adw.ApplicationWindow):
             subtitle="Approve the phone after scanning. This choice is never remembered.", active=False)
         connection.add(self.trust_switch)
         self.clipboard_switch = Adw.SwitchRow(title="Share plain-text clipboard", active=bool(self.preferences.get("clipboard", False)))
-        self.notification_switch = Adw.SwitchRow(title="Connection notifications", active=bool(self.preferences.get("notifications", True)))
+        self.notification_switch = Adw.SwitchRow(title="Phone and connection notifications",
+            subtitle="Forward phone notifications to this desktop. Applies after reconnecting.", active=bool(self.preferences.get("notifications", True)))
         connection.add(self.clipboard_switch)
         connection.add(self.notification_switch)
         self.phone_entry.connect("notify::text", lambda *_: self._save_preferences())
@@ -753,7 +802,8 @@ class OfficeWindow(Adw.ApplicationWindow):
                 self._preview_file(item)
 
     def _open_selected(self):
-        item = self.selection.get_selected_item()
+        items = self._selected_items()
+        item = items[0] if len(items) == 1 else None
         if item:
             self._open_folder(item.path) if item.folder else self._preview_file(item)
 
@@ -793,9 +843,30 @@ class OfficeWindow(Adw.ApplicationWindow):
 
         self.backend.call(self._selected_arguments("stream", item), completed)
 
+    def _selected_items(self):
+        selected = self.selection.get_selection()
+        return [self.filtered.get_item(selected.get_nth(index)) for index in range(selected.get_size())
+                if selected.get_nth(index) < self.filtered.get_n_items()]
+
+    def _select_all_files(self, *_):
+        if self.selection_updating:
+            return
+        if self.select_all.get_active():
+            chosen = Gtk.Bitset.new_empty()
+            for index in range(self.filtered.get_n_items()):
+                if not self.filtered.get_item(index).folder:
+                    chosen.add(index)
+            self.selection.set_selection(chosen, Gtk.Bitset.new_range(0, self.filtered.get_n_items()))
+        else:
+            self.selection.unselect_all()
+
     def _download_file(self):
-        item = self.selection.get_selected_item()
-        if not item or item.folder or not self.connected:
+        items = [item for item in self._selected_items() if not item.folder]
+        if len(items) > 1:
+            self._download_many(items)
+            return
+        item = items[0] if items else None
+        if not item or not self.connected:
             return
         dialog = Gtk.FileDialog(title="Save phone file", initial_name=item.name)
 
@@ -826,34 +897,97 @@ class OfficeWindow(Adw.ApplicationWindow):
 
         dialog.save(self, None, selected)
 
-    def _import_file(self):
-        if not self.connected:
+    def _download_many(self, items):
+        if not self.connected or self.transfer_busy:
             return
-        dialog = Gtk.FileDialog(title="Import computer file")
-        destination = self.directory if not self.category else "/storage/emulated/0/Download"
-
+        dialog = Gtk.FileDialog(title="Save selected files to folder")
         def selected(current, result):
             try:
-                local = current.open_finish(result).get_path()
+                folder = current.select_folder_finish(result).get_path()
             except GLib.Error:
                 return
-            if not local or not private_regular(local, 1024 * 1024 * 1024):
-                self.receipt.set_text("Choose a regular local file of at most 1 GiB, without a symbolic link.")
+            if not folder or self.transfer_busy or not self.connected:
                 return
-            if not self.connected:
-                self.receipt.set_text("Connect the phone before importing a file.")
-                return
-            self.receipt.set_text("Importing computer file…")
+            jobs = deque(items)
+            total, failed = len(jobs), []
+            self.transfer_busy = True
+            self._update_controls()
+            def next_file():
+                if self.shutting_down:
+                    return
+                if not jobs or not self.connected:
+                    failed.extend(jobs)
+                    self.transfer_busy = False
+                    self.receipt.set_text(f"Saved {total - len(failed)} of {total} files" +
+                                          (f" · {len(failed)} failed; select them to retry" if failed else ""))
+                    self._update_controls()
+                    self._send_pending()
+                    return
+                item = jobs.popleft()
+                output = available_download_path(folder, item.name)
+                self.receipt.set_text(f"Saving file {total - len(jobs)} of {total}…")
+                def completed(receipt, error):
+                    if error or not valid_download_receipt(receipt, item.size):
+                        failed.append(item)
+                    next_file()
+                self.backend.call(self._selected_arguments("download", item) + ["--output", output], completed)
+            next_file()
+        dialog.select_folder(self, None, selected)
 
+    def _import_file(self):
+        if not self.connected or self.transfer_busy:
+            return
+        dialog = Gtk.FileDialog(title="Send files to phone")
+        def selected(current, result):
+            try:
+                files = current.open_multiple_finish(result)
+            except GLib.Error:
+                return
+            self.send_files([files.get_item(index) for index in range(files.get_n_items())])
+        dialog.open_multiple(self, None, selected)
+
+    def send_files(self, files):
+        if len(files) + len(self.pending_sends) > 200:
+            self.receipt.set_text("Send up to 200 files at a time.")
+            return
+        paths = [file.get_path() for file in files]
+        if any(not path or not private_regular(path, 1024 * 1024 * 1024) for path in paths):
+            self.receipt.set_text("Choose regular local files of at most 1 GiB each, without symbolic links.")
+            return
+        self.pending_sends.extend(paths)
+        if not self.connected:
+            self._navigate("settings")
+            self.connection_status.set_text(f"Connect your phone to send {len(self.pending_sends)} queued files")
+        elif not self.transfer_busy:
+            self._send_pending()
+
+    def _send_pending(self):
+        if not self.pending_sends or self.transfer_busy or not self.connected or self.shutting_down:
+            return
+        self.transfer_busy = True
+        self._update_controls()
+        total, failed = len(self.pending_sends), []
+        done = 0
+        def next_file():
+            nonlocal done
+            if self.shutting_down:
+                return
+            if not self.pending_sends or not self.connected:
+                self.transfer_busy = False
+                self.receipt.set_text(f"Sent {done - len(failed)} of {done} files" +
+                                      (f" · {len(failed)} failed; send them again to retry" if failed else "") +
+                                      (f" · {len(self.pending_sends)} waiting for connection" if self.pending_sends else ""))
+                self._update_controls()
+                return
+            local = self.pending_sends.popleft()
+            done += 1
+            self.receipt.set_text(f"Sending file {done} of {max(total, done + len(self.pending_sends))}…")
             def completed(result, error):
                 if error or not isinstance(result, dict):
-                    self.receipt.set_text("Import failed. Check phone access and the destination folder.")
-                else:
-                    self.receipt.set_text(f"Imported {GLib.format_size(result.get('bytes', 0))}. Peer integrity has not been verified.")
-
-            self.backend.call(["upload", "--local", local, "--to", destination], completed)
-
-        dialog.open(self, None, selected)
+                    failed.append(local)
+                next_file()
+            self.backend.call(["upload", "--local", local, "--to", "/storage/emulated/0/Download"], completed)
+        next_file()
 
     def _poll_status(self):
         if self.shutting_down:
@@ -886,6 +1020,8 @@ class OfficeWindow(Adw.ApplicationWindow):
                         else "Connected · Reconnect to enable incoming files")
                 else:
                     self.connection_status.set_text("Waiting for your phone…" if self.owned else "Connect your phone to get started")
+            if not self.connected and self.pending_sends:
+                self.connection_status.set_text(f"Connect your phone to send {len(self.pending_sends)} queued files")
             if was_connected and not self.connected:
                 self.generation += 1
                 self.store.remove_all()
@@ -897,6 +1033,7 @@ class OfficeWindow(Adw.ApplicationWindow):
                 self._load_files(True)
             if self.connected and not was_connected:
                 self._navigate("files")
+                self._send_pending()
 
         self.backend.call(["native-status"], completed)
         return GLib.SOURCE_CONTINUE
@@ -904,9 +1041,17 @@ class OfficeWindow(Adw.ApplicationWindow):
     def _update_controls(self):
         if not hasattr(self, "download_button"):
             return
-        item = self.selection.get_selected_item() if hasattr(self, "selection") else None
-        self.import_button.set_sensitive(self.connected and not self.shutting_down)
-        self.download_button.set_sensitive(self.connected and item is not None and not item.folder)
+        selected = self._selected_items() if hasattr(self, "selection") else []
+        files = [item for item in selected if not item.folder]
+        item = selected[0] if len(selected) == 1 else None
+        self.import_button.set_sensitive(self.connected and not self.shutting_down and not self.transfer_busy)
+        self.download_button.set_sensitive(self.connected and bool(files) and not self.transfer_busy)
+        self.download_button.set_tooltip_text(f"Save {len(files)} selected files" if len(files) > 1 else "Save selected file to computer")
+        self.selection_updating = True
+        count = sum(not self.filtered.get_item(i).folder for i in range(self.filtered.get_n_items()))
+        self.select_all.set_active(bool(count) and len(files) == count)
+        self.select_all.set_inconsistent(0 < len(files) < count)
+        self.selection_updating = False
         self.preview_button.set_sensitive(self.connected and item is not None and not self.preview_busy)
         self.mirror_button.set_sensitive(self.connected and not self.shutting_down)
         self.connection_pill.set_visible(self.connected)
@@ -1097,7 +1242,7 @@ class OfficeWindow(Adw.ApplicationWindow):
 class OfficeApplication(Adw.Application):
     def __init__(self, backend=None, settings=None, testing=False):
         super().__init__(application_id="io.github.vivolinux.OfficeKit",
-                         flags=Gio.ApplicationFlags.NON_UNIQUE if testing else Gio.ApplicationFlags.DEFAULT_FLAGS)
+                         flags=(Gio.ApplicationFlags.NON_UNIQUE if testing else Gio.ApplicationFlags.DEFAULT_FLAGS) | Gio.ApplicationFlags.HANDLES_OPEN)
         if backend is None or settings is None:
             from .backend import Backend, Settings
             backend = backend if backend is not None else Backend()
@@ -1127,6 +1272,10 @@ class OfficeApplication(Adw.Application):
             if self.testing:
                 GLib.timeout_add(350, self._self_test)
         self.window.present()
+
+    def do_open(self, files, count, hint):
+        self.activate()
+        self.window.send_files(files)
 
     def _preferences(self, *_args):
         self.activate()
@@ -1169,6 +1318,15 @@ class OfficeApplication(Adw.Application):
             window.close_settings_button.emit("clicked")
             assert window.pages.get_visible_child_name() == "files"
             assert isinstance(window.grid, Gtk.GridView) and isinstance(window.store, Gio.ListStore)
+            assert isinstance(window.selection, Gtk.MultiSelection)
+            window.selection.select_item(0, False)
+            window.selection.select_item(1, False)
+            assert len(window._selected_items()) == 2 and window.download_button.get_sensitive()
+            assert not window.preview_button.get_sensitive()
+            window.select_all.set_active(True)
+            assert len(window._selected_items()) == 5
+            window.select_all.set_active(False)
+            assert window._selected_items() == []
             assert window.store.get_n_items() == 5, "automatic page loading"
             assert window.store.get_item(0).page == 0 and window.store.get_item(4).page == 1
             assert window.store.get_item(4).category == "recent"
@@ -1260,9 +1418,10 @@ class _TestBackend:
 def main(argv=None):
     parser = argparse.ArgumentParser(description="VOkit native GTK desktop")
     parser.add_argument("--self-test", action="store_true")
+    parser.add_argument("files", nargs="*", help="Local files to send to the connected phone")
     options = parser.parse_args(argv)
     app = OfficeApplication(_TestBackend(), _TestSettings(), testing=True) if options.self_test else OfficeApplication()
-    code = app.run([sys.argv[0]])
+    code = app.run([sys.argv[0]] + [Gio.File.new_for_commandline_arg(path).get_uri() for path in options.files])
     return app.test_exit or code
 
 

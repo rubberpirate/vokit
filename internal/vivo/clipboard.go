@@ -19,7 +19,9 @@ type Clipboard interface {
 }
 
 type ControlOptions struct {
-	Clipboard Clipboard
+	Configure           bool
+	NotificationMessage func([]byte)
+	Clipboard           Clipboard
 	// Supplying a permission channel requests FILE_MANAGER access once connected.
 	FilePermission         chan<- bool
 	MirrorPermission       chan<- bool

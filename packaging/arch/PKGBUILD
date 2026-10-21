@@ -1,6 +1,6 @@
 # Build using scripts/build-arch-package.sh from the source checkout.
 pkgname=vokit
-pkgver=0.4.0
+pkgver=0.5.0
 pkgrel=1
 pkgdesc='VOkit: independent native Linux desktop companion for compatible vivo phones'
 arch=('x86_64' 'aarch64')

@@ -256,6 +256,12 @@ func (p *PhoneClient) controlFeatures(ctx context.Context, s *Session, interval 
 		return errors.New("initial control heartbeat failed")
 	}
 	emit(Event{Time: time.Now().UTC(), Stage: "heartbeat_sent", Count: 1})
+	if options.Configure {
+		if err := writeMessage(pcConfiguration(options)); err != nil {
+			return errors.New("phone feature configuration failed")
+		}
+		emit(Event{Time: time.Now().UTC(), Stage: "phone_features_configured"})
+	}
 	var clipboardChanges <-chan string
 	var guard clipboardGuard
 	if options.Clipboard != nil {
@@ -358,6 +364,9 @@ func (p *PhoneClient) controlFeatures(ctx context.Context, s *Session, interval 
 		}
 		if typ == websocket.MessageText {
 			emit(SummarizeMessage(data))
+			if options.NotificationMessage != nil {
+				options.NotificationMessage(data)
+			}
 			if options.IncomingFileMessage != nil {
 				options.IncomingFileMessage(data)
 			}

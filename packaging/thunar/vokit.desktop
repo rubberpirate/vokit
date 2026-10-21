@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Send to phone with VOkit
+Comment=Send selected files to the connected vivo phone
+Exec=vokit %F
+TryExec=vokit
+Icon=phone-symbolic
+Terminal=false

@@ -18,6 +18,7 @@ import (
 	"strings"
 	"syscall"
 	"time"
+	"unicode/utf8"
 )
 
 const MaxUploadBytes int64 = 1 << 30
@@ -29,7 +30,7 @@ type UploadResult struct {
 	LocalSHA256 string `json:"local_sha256"`
 }
 
-// UploadFile creates a new randomly named file, requesting rename on collision.
+// UploadFile preserves the selected basename and requests rename on collision.
 // LocalSHA256 describes bytes read locally; the protocol supplies no peer hash.
 func (p *PhoneClient) UploadFile(ctx context.Context, s *Session, localPath, remoteDirectory string) (result UploadResult, err error) {
 	phase := "source"
@@ -55,7 +56,10 @@ func (p *PhoneClient) UploadFile(ctx context.Context, s *Session, localPath, rem
 	if _, err := rand.Read(random); err != nil {
 		return UploadResult{}, errors.New("cannot create upload identifier")
 	}
-	name := "vivo-transfer-" + hex.EncodeToString(random) + uploadExtension(localPath)
+	name := filepath.Base(localPath)
+	if name == "." || name == ".." || len(name) > 255 || !utf8.ValidString(name) || strings.ContainsAny(name, "/\\\x00") {
+		return UploadResult{}, errors.New("unsupported upload file name")
+	}
 	random[6] = random[6]&15 | 64
 	random[8] = random[8]&63 | 128
 	id := fmt.Sprintf("%x-%x-%x-%x-%x", random[:4], random[4:6], random[6:8], random[8:10], random[10:])
@@ -181,10 +185,11 @@ func (p *PhoneClient) UploadFile(ctx context.Context, s *Session, localPath, rem
 			return UploadResult{}, errors.New("invalid upload response")
 		}
 		if reply.Data.Items != nil {
-			if len(reply.Data.Items) != 1 || reply.Data.Items[0].FileName != name || !validPhonePath(reply.Data.Items[0].SavePath) || path.Base(reply.Data.Items[0].SavePath) == "/" || path.Dir(reply.Data.Items[0].SavePath) != remoteDirectory {
+			if len(reply.Data.Items) != 1 || (reply.Data.Items[0].FileName != name && reply.Data.Items[0].FileName != path.Base(reply.Data.Items[0].SavePath)) || !validPhonePath(reply.Data.Items[0].SavePath) || path.Base(reply.Data.Items[0].SavePath) == "/" || path.Dir(reply.Data.Items[0].SavePath) != remoteDirectory {
 				return UploadResult{}, errors.New("invalid phone upload destination")
 			}
 			result.SavePath = reply.Data.Items[0].SavePath
+			result.FileName = path.Base(result.SavePath)
 		}
 	}
 	return result, nil
@@ -247,17 +252,4 @@ func openUploadFile(localPath string) (*os.File, os.FileInfo, error) {
 		return nil, nil, errors.New("upload source must be a regular file of at most 1 GiB")
 	}
 	return file, info, nil
-}
-
-func uploadExtension(localPath string) string {
-	extension := strings.ToLower(filepath.Ext(localPath))
-	if len(extension) < 2 || len(extension) > 13 {
-		return ""
-	}
-	for _, letter := range extension[1:] {
-		if !(letter >= 'a' && letter <= 'z' || letter >= '0' && letter <= '9') {
-			return ""
-		}
-	}
-	return extension
 }

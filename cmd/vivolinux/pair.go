@@ -64,7 +64,7 @@ func parsePairOptions(args []string) (pairOptions, error) {
 	flags.StringVar(&options.localIP, "local-ip", "", "local LAN IP (otherwise automatically selected)")
 	flags.DurationVar(&options.duration, "duration", 5*time.Minute, "control test duration after negotiation")
 	flags.BoolVar(&options.clipboard, "clipboard", false, "sync new plain-text clipboard changes while connected")
-	flags.BoolVar(&options.notifications, "notifications", false, "show local connection status notifications")
+	flags.BoolVar(&options.notifications, "notifications", false, "forward phone notifications and show connection notices")
 	flags.StringVar(&options.helper, "desktop-helper", "", "native desktop helper path (default beside executable)")
 	flags.StringVar(&options.listDir, "list-files", "", "request permission and list one phone directory into private files.json")
 	flags.StringVar(&options.download, "download", "", "download this exact phone file after permission and listing")
@@ -332,7 +332,7 @@ func runPair(ctx context.Context, args []string) error {
 		testCtx, stop = context.WithTimeout(ctx, options.duration)
 	}
 	defer stop()
-	features := vivo.ControlOptions{}
+	features := vivo.ControlOptions{Configure: true}
 	var connected, fileAllowed atomic.Bool
 	media := newNativeMedia(session, phoneAddress, options.trustScanned, options.pin, connected.Load, func(e vivo.Event) { emit(e) })
 	features.MainRequests = media.requests
@@ -392,6 +392,47 @@ func runPair(ctx context.Context, args []string) error {
 					}
 				}
 			})
+		}()
+	}
+	if options.notifications && bridge != nil {
+		notifications := make(chan vivo.PhoneNotification, 32)
+		features.NotificationMessage = func(data []byte) {
+			notification, matched, err := vivo.ParsePhoneNotification(data)
+			if !matched {
+				return
+			}
+			if err != nil {
+				stage("phone_notification_rejected")
+				return
+			}
+			select {
+			case notifications <- notification:
+			default:
+				stage("phone_notification_queue_full")
+			}
+		}
+		fileWorker.Add(1)
+		go func() {
+			defer fileWorker.Done()
+			ticker := time.NewTicker(150 * time.Millisecond)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-testCtx.Done():
+					return
+				case notification := <-notifications:
+					select {
+					case <-testCtx.Done():
+						return
+					case <-ticker.C:
+					}
+					if bridge.NotifyPhone(testCtx, notification.App, notification.Title, notification.Body) != nil {
+						stage("phone_notification_delivery_failed")
+					} else {
+						stage("phone_notification_delivered")
+					}
+				}
+			}
 		}()
 	}
 	if options.clipboard {
@@ -504,7 +545,7 @@ func runPair(ctx context.Context, args []string) error {
 		defer fileWorker.Done()
 		err := service.ServeNativeReady(testCtx, options.nativeSocket, func(requestCtx context.Context, request service.NativeRequest) (any, error) {
 			if request.Method == "status" {
-				return map[string]any{"backend": "native-vivo", "connected": connected.Load(), "device_name": session.DeviceName, "clipboard_enabled": options.clipboard, "file_permission": fileAllowed.Load(), "receive_ready": receiveReady, "receive_enabled": options.receiveDir != ""}, nil
+				return map[string]any{"backend": "native-vivo", "connected": connected.Load(), "device_name": session.DeviceName, "clipboard_enabled": options.clipboard, "notifications_enabled": options.notifications, "file_permission": fileAllowed.Load(), "receive_ready": receiveReady, "receive_enabled": options.receiveDir != ""}, nil
 			}
 			if !connected.Load() {
 				return nil, errors.New("phone is disconnected")
