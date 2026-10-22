@@ -1,0 +1,52 @@
+﻿[
+    {
+        "path":  "findings.md",
+        "bytes":  17607,
+        "sha256":  "B3985ADE4649A8432E92A26FEC2EF1E0DF0E6C606956BE996229589BC7DD7762"
+    },
+    {
+        "path":  "timeline.jsonl",
+        "bytes":  392005,
+        "sha256":  "E39F178EBBC084710E72B61DE7752ED87BCC1B0A32B954C66F3265FA7EE67559"
+    },
+    {
+        "path":  "offer-redacted.sdp",
+        "bytes":  5092,
+        "sha256":  "CE64A23FE8DAB1669162B4790367F2121C64CB946BBD323802251E04E50AABBA"
+    },
+    {
+        "path":  "answer-redacted.sdp",
+        "bytes":  3335,
+        "sha256":  "337E9C0407FAB67BFB3B4979CA7798ED66F02163D93B849B21FCF22BE49D7A3F"
+    },
+    {
+        "path":  "answer-gathered-redacted.sdp",
+        "bytes":  4295,
+        "sha256":  "EFB260D96F7D4830008A13ABD6D5084E0B3CB8D4D99F3107276CAFA949D5CCE8"
+    },
+    {
+        "path":  "evidence\\environment.json",
+        "bytes":  851,
+        "sha256":  "6488DEC8E8E8EEE52B2934AB5F5DF8DB7D7B8F81C8252AC85067914A72BF7FE7"
+    },
+    {
+        "path":  "evidence\\startup-payloads-synthetic.json",
+        "bytes":  1772,
+        "sha256":  "59800E7DF3524A01F955F4BAE1B68146638C74910EEA6F8DD664D89F02D81956"
+    },
+    {
+        "path":  "evidence\\sanitized\\rtc_exosip-2026-10-22.log",
+        "bytes":  2185,
+        "sha256":  "D94F3E2CF5AD0A0D29DDDAE9D8A8634B4E53C66AAE51816BA46F183F30A8EBAD"
+    },
+    {
+        "path":  "evidence\\sanitized\\rtc_vivoav-2026-10-22.log",
+        "bytes":  65434,
+        "sha256":  "776AF25D64DBF37F54AABF90C6C925446CB649E46873CBE1005CFAAD91955CA5"
+    },
+    {
+        "path":  "evidence\\sanitized\\service_service-2026-10-22.log",
+        "bytes":  3878,
+        "sha256":  "4816196C585A41CE8C5E24F8F58EA57C9FDB1515822C1F8F2FB8F97CB309F326"
+    }
+]

@@ -1,0 +1,31 @@
+{
+  "notice": "Synthetic values. Wire envelopes reconstructed from installed productWsParam code; not a verbatim packet capture. Observed occurrence and limitations are documented in findings.md.",
+  "pc_screen_info": {
+    "action": "msg", "version": "v1", "connectionId": "CONNECTION_1",
+    "sourceDeviceNo": "PC", "targetDeviceNo": "PHONE", "timeStamp": 1700000000000,
+    "msgId": "SCREEN_MSG_1",
+    "data": {
+      "type": "deviceScreenInfo", "currentScreenIndex": 0,
+      "mScreenInfos": [{"height":1080,"id":0,"selected":true,"title":"DISPLAY1","width":1920,"x":0,"y":0,"index":0}]
+    }
+  },
+  "phone_screen_info_confirm": {
+    "action":"confirm", "version":"v1", "connectionId":"CONNECTION_1",
+    "sourceDeviceNo":"PHONE", "targetDeviceNo":"PC", "timeStamp":"1700000000100",
+    "msgId":"SCREEN_MSG_1", "data":{"type":"deviceScreenInfo","name":""}
+  },
+  "pc_screen_lock": {
+    "action":"msg", "version":"v1", "connectionId":"CONNECTION_1",
+    "sourceDeviceNo":"PC", "targetDeviceNo":"PHONE", "timeStamp":1700000000000,
+    "msgId":"LOCK_MSG_1", "data":{"type":"screenLockInfo","isLock":false,"passwordInputPosition":"<omitted>"}
+  },
+  "pc_dpi_source_reconstructed": {
+    "action":"msg", "version":"v1", "connectionId":"CONNECTION_1",
+    "sourceDeviceNo":"PC", "targetDeviceNo":"PHONE", "timeStamp":1700000000000,
+    "msgId":"DPI_MSG_1", "data":{"type":"deviceScreenDpiInfo","value":1.25}
+  },
+  "data_channel_dispatch_shape_from_code": {
+    "msgId":"INPUT_MSG_1", "data":{"type":"changeWidgetState","name":"multimediaTransfer","value":1}
+  },
+  "video_control_notice": "The example above is code-supported resume-video syntax, not a startup command observed in these sessions. Values: 0 pause video, 1 resume video, 2 pause audio, 3 resume audio."
+}

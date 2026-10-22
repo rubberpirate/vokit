@@ -1,0 +1,422 @@
+[
+    {
+        "Path":  "/package.json",
+        "Size":  801,
+        "Offset":  "0"
+    },
+    {
+        "Path":  "/dist/1.js",
+        "Size":  92463,
+        "Offset":  "801"
+    },
+    {
+        "Path":  "/dist/2.js",
+        "Size":  45501,
+        "Offset":  "93264"
+    },
+    {
+        "Path":  "/dist/3.js",
+        "Size":  58503,
+        "Offset":  "138765"
+    },
+    {
+        "Path":  "/dist/4.js",
+        "Size":  19511,
+        "Offset":  "197268"
+    },
+    {
+        "Path":  "/dist/5.js",
+        "Size":  8175,
+        "Offset":  "216779"
+    },
+    {
+        "Path":  "/dist/index.html",
+        "Size":  1477,
+        "Offset":  "224954"
+    },
+    {
+        "Path":  "/dist/main.js",
+        "Size":  750425,
+        "Offset":  "226431"
+    },
+    {
+        "Path":  "/dist/preload-allownInBackground.js",
+        "Size":  868285,
+        "Offset":  "976856"
+    },
+    {
+        "Path":  "/dist/preload-load.js",
+        "Size":  954,
+        "Offset":  "1845141"
+    },
+    {
+        "Path":  "/dist/preload-macAuth.js",
+        "Size":  869062,
+        "Offset":  "1846095"
+    },
+    {
+        "Path":  "/dist/preload-monitor.js",
+        "Size":  4108,
+        "Offset":  "2715157"
+    },
+    {
+        "Path":  "/dist/preload-widget.js",
+        "Size":  2253,
+        "Offset":  "2719265"
+    },
+    {
+        "Path":  "/dist/preload.js",
+        "Size":  2324,
+        "Offset":  "2721518"
+    },
+    {
+        "Path":  "/dist/renderer.js",
+        "Size":  3289093,
+        "Offset":  "2723842"
+    },
+    {
+        "Path":  "/dist/static/html/allowInbackground.html",
+        "Size":  2825,
+        "Offset":  "6019719"
+    },
+    {
+        "Path":  "/dist/static/html/allowInbackgroundDark.html",
+        "Size":  2844,
+        "Offset":  "6022544"
+    },
+    {
+        "Path":  "/dist/static/html/load.html",
+        "Size":  1070,
+        "Offset":  "8936640"
+    },
+    {
+        "Path":  "/dist/static/html/macAuth.html",
+        "Size":  4270,
+        "Offset":  "9748913"
+    },
+    {
+        "Path":  "/dist/static/html/macAuthDark.html",
+        "Size":  4289,
+        "Offset":  "9753183"
+    },
+    {
+        "Path":  "/dist/static/html/monitor.html",
+        "Size":  1175,
+        "Offset":  "9757472"
+    },
+    {
+        "Path":  "/dist/assets/lang/base.json",
+        "Size":  11599,
+        "Offset":  "10338511"
+    },
+    {
+        "Path":  "/dist/assets/lang/translateResult.json",
+        "Size":  842947,
+        "Offset":  "10350110"
+    },
+    {
+        "Path":  "/dist/assets/lang/var_rEG.json",
+        "Size":  16724,
+        "Offset":  "11193057"
+    },
+    {
+        "Path":  "/dist/assets/lang/vaz.json",
+        "Size":  13721,
+        "Offset":  "11209781"
+    },
+    {
+        "Path":  "/dist/assets/lang/vbe.json",
+        "Size":  16916,
+        "Offset":  "11223502"
+    },
+    {
+        "Path":  "/dist/assets/lang/vbg_rBG.json",
+        "Size":  19511,
+        "Offset":  "11240418"
+    },
+    {
+        "Path":  "/dist/assets/lang/vbn_rBD.json",
+        "Size":  23218,
+        "Offset":  "11259929"
+    },
+    {
+        "Path":  "/dist/assets/lang/vbs_rBA.json",
+        "Size":  13228,
+        "Offset":  "11283147"
+    },
+    {
+        "Path":  "/dist/assets/lang/vca_rES.json",
+        "Size":  13455,
+        "Offset":  "11296375"
+    },
+    {
+        "Path":  "/dist/assets/lang/vcs_rCZ.json",
+        "Size":  13378,
+        "Offset":  "11309830"
+    },
+    {
+        "Path":  "/dist/assets/lang/vde.json",
+        "Size":  13318,
+        "Offset":  "11323208"
+    },
+    {
+        "Path":  "/dist/assets/lang/vel_rGR.json",
+        "Size":  20531,
+        "Offset":  "11336526"
+    },
+    {
+        "Path":  "/dist/assets/lang/ves_rES.json",
+        "Size":  13306,
+        "Offset":  "11357057"
+    },
+    {
+        "Path":  "/dist/assets/lang/ves_rUS.json",
+        "Size":  13213,
+        "Offset":  "11370363"
+    },
+    {
+        "Path":  "/dist/assets/lang/vet.json",
+        "Size":  12035,
+        "Offset":  "11383576"
+    },
+    {
+        "Path":  "/dist/assets/lang/veu_rES.json",
+        "Size":  13061,
+        "Offset":  "11395611"
+    },
+    {
+        "Path":  "/dist/assets/lang/vfa.json",
+        "Size":  17317,
+        "Offset":  "11408672"
+    },
+    {
+        "Path":  "/dist/assets/lang/vfi_rFI.json",
+        "Size":  12632,
+        "Offset":  "11425989"
+    },
+    {
+        "Path":  "/dist/assets/lang/vfr.json",
+        "Size":  14249,
+        "Offset":  "11438621"
+    },
+    {
+        "Path":  "/dist/assets/lang/vgl_rES.json",
+        "Size":  13353,
+        "Offset":  "11452870"
+    },
+    {
+        "Path":  "/dist/assets/lang/vhi.json",
+        "Size":  22643,
+        "Offset":  "11466223"
+    },
+    {
+        "Path":  "/dist/assets/lang/vhr_rHR.json",
+        "Size":  12694,
+        "Offset":  "11488866"
+    },
+    {
+        "Path":  "/dist/assets/lang/vhu_rHU.json",
+        "Size":  14021,
+        "Offset":  "11501560"
+    },
+    {
+        "Path":  "/dist/assets/lang/vin.json",
+        "Size":  12647,
+        "Offset":  "11515581"
+    },
+    {
+        "Path":  "/dist/assets/lang/vit.json",
+        "Size":  13237,
+        "Offset":  "11528228"
+    },
+    {
+        "Path":  "/dist/assets/lang/viw.json",
+        "Size":  14149,
+        "Offset":  "11541465"
+    },
+    {
+        "Path":  "/dist/assets/lang/vja_rJP.json",
+        "Size":  15382,
+        "Offset":  "11555614"
+    },
+    {
+        "Path":  "/dist/assets/lang/vka.json",
+        "Size":  24433,
+        "Offset":  "11570996"
+    },
+    {
+        "Path":  "/dist/assets/lang/vkk_rKZ.json",
+        "Size":  18775,
+        "Offset":  "11595429"
+    },
+    {
+        "Path":  "/dist/assets/lang/vkm_rKH.json",
+        "Size":  25151,
+        "Offset":  "11614204"
+    },
+    {
+        "Path":  "/dist/assets/lang/vko_rKR.json",
+        "Size":  13487,
+        "Offset":  "11639355"
+    },
+    {
+        "Path":  "/dist/assets/lang/vlo_rLA.json",
+        "Size":  26600,
+        "Offset":  "11652842"
+    },
+    {
+        "Path":  "/dist/assets/lang/vlt.json",
+        "Size":  13493,
+        "Offset":  "11679442"
+    },
+    {
+        "Path":  "/dist/assets/lang/vlv.json",
+        "Size":  13087,
+        "Offset":  "11692935"
+    },
+    {
+        "Path":  "/dist/assets/lang/vmk_rMK.json",
+        "Size":  18984,
+        "Offset":  "11706022"
+    },
+    {
+        "Path":  "/dist/assets/lang/vms.json",
+        "Size":  12579,
+        "Offset":  "11725006"
+    },
+    {
+        "Path":  "/dist/assets/lang/vmy_rMM.json",
+        "Size":  26739,
+        "Offset":  "11737585"
+    },
+    {
+        "Path":  "/dist/assets/lang/vmy_rZG.json",
+        "Size":  26506,
+        "Offset":  "11764324"
+    },
+    {
+        "Path":  "/dist/assets/lang/vnb.json",
+        "Size":  12329,
+        "Offset":  "11790830"
+    },
+    {
+        "Path":  "/dist/assets/lang/vne_rNP.json",
+        "Size":  23904,
+        "Offset":  "11803159"
+    },
+    {
+        "Path":  "/dist/assets/lang/vnl.json",
+        "Size":  13044,
+        "Offset":  "11827063"
+    },
+    {
+        "Path":  "/dist/assets/lang/vpl_rPL.json",
+        "Size":  13175,
+        "Offset":  "11840107"
+    },
+    {
+        "Path":  "/dist/assets/lang/vpt_rBR.json",
+        "Size":  13040,
+        "Offset":  "11853282"
+    },
+    {
+        "Path":  "/dist/assets/lang/vpt_rPT.json",
+        "Size":  13485,
+        "Offset":  "11866322"
+    },
+    {
+        "Path":  "/dist/assets/lang/vro_rRO.json",
+        "Size":  13670,
+        "Offset":  "11879807"
+    },
+    {
+        "Path":  "/dist/assets/lang/vru.json",
+        "Size":  18424,
+        "Offset":  "11893477"
+    },
+    {
+        "Path":  "/dist/assets/lang/vsk_rSK.json",
+        "Size":  13461,
+        "Offset":  "11911901"
+    },
+    {
+        "Path":  "/dist/assets/lang/vsl_rSI.json",
+        "Size":  12982,
+        "Offset":  "11925362"
+    },
+    {
+        "Path":  "/dist/assets/lang/vsq_rAL.json",
+        "Size":  13957,
+        "Offset":  "11938344"
+    },
+    {
+        "Path":  "/dist/assets/lang/vsr_rRS.json",
+        "Size":  12930,
+        "Offset":  "11952301"
+    },
+    {
+        "Path":  "/dist/assets/lang/vsv_rSE.json",
+        "Size":  12867,
+        "Offset":  "11965231"
+    },
+    {
+        "Path":  "/dist/assets/lang/vsw_rKE.json",
+        "Size":  12996,
+        "Offset":  "11978098"
+    },
+    {
+        "Path":  "/dist/assets/lang/vth.json",
+        "Size":  23697,
+        "Offset":  "11991094"
+    },
+    {
+        "Path":  "/dist/assets/lang/vtl.json",
+        "Size":  13473,
+        "Offset":  "12014791"
+    },
+    {
+        "Path":  "/dist/assets/lang/vtr_rTR.json",
+        "Size":  12927,
+        "Offset":  "12028264"
+    },
+    {
+        "Path":  "/dist/assets/lang/vuk_rUA.json",
+        "Size":  18820,
+        "Offset":  "12041191"
+    },
+    {
+        "Path":  "/dist/assets/lang/vur_rPK.json",
+        "Size":  17310,
+        "Offset":  "12060011"
+    },
+    {
+        "Path":  "/dist/assets/lang/vus.json",
+        "Size":  11589,
+        "Offset":  "12077321"
+    },
+    {
+        "Path":  "/dist/assets/lang/vuz_rUZ.json",
+        "Size":  13042,
+        "Offset":  "12088910"
+    },
+    {
+        "Path":  "/dist/assets/lang/vvi.json",
+        "Size":  14526,
+        "Offset":  "12101952"
+    },
+    {
+        "Path":  "/dist/assets/lang/vzh_rCN.json",
+        "Size":  11137,
+        "Offset":  "12116478"
+    },
+    {
+        "Path":  "/dist/assets/lang/vzh_rHK.json",
+        "Size":  11490,
+        "Offset":  "12127615"
+    },
+    {
+        "Path":  "/dist/assets/lang/vzh_rTW.json",
+        "Size":  11338,
+        "Offset":  "12139105"
+    }
+]

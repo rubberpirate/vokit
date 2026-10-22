@@ -165,6 +165,7 @@ class OfficeWindow(Adw.ApplicationWindow):
         self.decoder = ThreadPoolExecutor(max_workers=2, thread_name_prefix="vivo-thumbnail")
         self.media_panel = None
         self.mirror_window = None
+        self.remote_pc_window = None
         self.qr_dialog = None
         self.preview_busy = False
         self.transfer_busy = False
@@ -214,6 +215,7 @@ class OfficeWindow(Adw.ApplicationWindow):
         for key, title, icon in (("home", "Home", "go-home-symbolic"),
                                  ("files", "My phone", "phone-symbolic"),
                                  ("connect", "Connect", "list-add-symbolic"),
+                                 ("remote-pc", "Remote PC", "computer-symbolic"),
                                  ("settings", "Settings", "preferences-system-symbolic")):
             if key == "settings":
                 nav.append(Gtk.Box(vexpand=True))
@@ -580,6 +582,9 @@ class OfficeWindow(Adw.ApplicationWindow):
         return container
 
     def _navigate(self, destination):
+        if destination == "remote-pc":
+            self._open_remote_pc()
+            return
         if destination == "connect":
             if self.connected:
                 self._navigate("files")
@@ -1210,6 +1215,12 @@ class OfficeWindow(Adw.ApplicationWindow):
         except (ImportError, GLib.Error, RuntimeError):
             self.receipt.set_text("Phone mirroring is unavailable. Check the media connection and reconnect.")
 
+    def _open_remote_pc(self):
+        from .remote_pc import RemotePCWindow
+        if self.remote_pc_window is None:
+            self.remote_pc_window = RemotePCWindow(self.app, self.backend, self.preferences)
+        self.remote_pc_window.present()
+
     def _open_camera(self):
         try:
             from .media import MediaPanel
@@ -1240,6 +1251,9 @@ class OfficeWindow(Adw.ApplicationWindow):
             self.media_panel.stop()
         if self.mirror_window:
             self.mirror_window.stop()
+        if self.remote_pc_window:
+            self.remote_pc_window.stop()
+            self.remote_pc_window.set_visible(False)
         for viewer in tuple(self.viewers):
             viewer.close()
 

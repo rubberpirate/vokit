@@ -5,14 +5,14 @@ pkgrel=1
 pkgdesc='VOkit: independent native Linux desktop companion for compatible vivo phones'
 arch=('x86_64' 'aarch64')
 license=('LicenseRef-Unspecified')
-depends=('gtk4>=4.16' 'libadwaita>=1.6' 'python-gobject' 'python-cairo' 'gstreamer' 'gst-plugins-base' 'gst-plugins-good' 'gst-plugins-bad' 'gst-libav' 'gst-plugin-gtk4' 'qrencode' 'wl-clipboard' 'pipewire-audio' 'xdg-utils')
+depends=('gtk4>=4.16' 'libadwaita>=1.6' 'python-gobject' 'python-cairo' 'gstreamer' 'gst-plugins-base' 'gst-plugins-good' 'gst-plugins-bad' 'gst-libav' 'gst-plugin-gtk4' 'gst-plugin-pipewire' 'libnice' 'xdg-desktop-portal' 'qrencode' 'wl-clipboard' 'pipewire-audio' 'xdg-utils')
 install="$pkgname.install"
 provides=('vivo-office-kit-linux')
 conflicts=('vivo-office-kit-linux')
 backup=('etc/modprobe.d/vivo-phone-camera.conf' 'etc/modules-load.d/vivo-phone-camera.conf')
 makedepends=('go>=1.23' 'make')
 checkdepends=('xorg-server-xvfb' 'xorg-xauth')
-optdepends=('v4l2loopback-dkms: publish a virtual webcam (requires matching kernel headers)')
+optdepends=('v4l2loopback-dkms: publish a virtual webcam (requires matching kernel headers)' 'wtype: keyboard input for experimental Remote PC on Hyprland')
 source=("vokit-${pkgver}.tar.gz")
 # Locally generated source snapshot; the wrapper replaces this with its SHA-256.
 sha256sums=('SKIP')

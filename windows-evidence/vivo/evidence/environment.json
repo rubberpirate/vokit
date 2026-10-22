@@ -1,0 +1,18 @@
+﻿{
+    "observedAt":  "2026-10-22T15:15:45.2843023+05:30",
+    "windowsRegistry":  {
+                            "UBR":  4652,
+                            "DisplayVersion":  "24H2",
+                            "ProductName":  "Windows 10 Home Single Language",
+                            "CurrentBuild":  "26100"
+                        },
+    "officeKitVersion":  "7.0.6",
+    "remoteUiVersion":  "3.0.6",
+    "remoteServiceLogVersion":  "3.0.4",
+    "remoteServiceFileVersion":  "14.20.0",
+    "dependencyMinorVersion":  "20250730",
+    "phoneMetadata":  "not supplied",
+    "sameLan":  "not independently established",
+    "accountRequirement":  "not established",
+    "operatorReport":  "User replied done to session exercise and yes to desktop/control/reconnect question; no detailed metadata or exact phone time supplied"
+}

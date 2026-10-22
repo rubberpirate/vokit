@@ -28,7 +28,7 @@ def deliver(callback, *args):
 
 
 class Settings:
-    KEYS = {"phone", "manual_phone", "receive_dir", "clipboard", "notifications", "theme", "window_width", "window_height", "list_mode"}
+    KEYS = {"phone", "manual_phone", "receive_dir", "clipboard", "notifications", "theme", "window_width", "window_height", "list_mode", "remote_country"}
 
     def __init__(self, path=None):
         self.path = Path(path) if path else Path(os.environ.get("XDG_CONFIG_HOME", str(Path.home()/".config"))) / "vivo-office-kit/preferences.json"

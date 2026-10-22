@@ -182,6 +182,9 @@ class Helper:
 
 def main(argv=None):
     args = sys.argv[1:] if argv is None else argv
+    if args == ["--remote-host"]:
+        from .remote_host import main as remote_main
+        return remote_main()
     if args==["--watch-clipboard"]:
         # Keep Wayland data-control observation tied to the helper's lifetime.
         import ctypes

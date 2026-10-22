@@ -30,6 +30,7 @@ Usage:
   vivolinux stream --remote PHONE_MEDIA [--category images|videos --page 0]
   vivolinux preview --remote PHONE_MEDIA --output PRIVATE_CACHE_FILE
   vivolinux phone-certificate --phone LAN_IP
+  vivolinux remote-pc [--state-dir PATH] [--desktop-helper PATH] [--country IN]
   vivolinux doctor
   vivolinux devices [--timeout 10s] [--via-service] [--socket PATH]
   vivolinux push --serial SERIAL [--timeout 2m] LOCAL ABSOLUTE_REMOTE
@@ -50,6 +51,8 @@ Push/pull explicitly write files and may overwrite existing files.
 Rich/file clipboard remains planned; phone and connection notifications,
 plain-text clipboard and virtual webcam output are implemented.
 Mirror uses scrcpy's normal controls; camera displays a preview (Android 12+ required).
+Remote PC shares this desktop through the phone's Office Kit Remote PC feature;
+it requires screen-sharing permission and emits JSON lines. Input control depends on the desktop session.
 Remote paths allow letters, digits, spaces, / . _ - and must not contain '..' segments.
 This is not a complete vivo Office Kit port and cannot guarantee every phone or laptop.
 `
@@ -83,6 +86,9 @@ func run(ctx context.Context, args []string, runner android.Runner) error {
 	}
 	if command == "phone-certificate" {
 		return runPhoneCertificate(ctx, args[1:])
+	}
+	if command == "remote-pc" {
+		return runRemotePC(ctx, args[1:])
 	}
 	flags := flag.NewFlagSet(command, flag.ContinueOnError)
 	serial, socket, timeout, viaService := "", service.DefaultSocket(), 10*time.Second, false
