@@ -2,7 +2,7 @@ PREFIX ?= $(HOME)/.local
 GO ?= go
 PYTHON ?= python3
 
-.PHONY: build desktop test test-desktop install install-desktop install-app install-files install-system-config check-packaging
+.PHONY: build desktop macos test test-desktop install install-desktop install-app install-files install-system-config check-packaging
 build:
 	CGO_ENABLED=0 $(GO) build -trimpath -o build/vivolinux ./cmd/vivolinux
 
@@ -13,6 +13,9 @@ desktop:
 	install -m755 desktop/gtk/vivo-desktop desktop/gtk/vivo-desktop-helper build/
 	install -m755 desktop/gtk/vivo-desktop build/vokit
 	$(PYTHON) -m compileall -q build/vivo_desktop
+
+macos:
+	sh scripts/build-macos.sh
 
 test-desktop: desktop
 	xvfb-run -a env GDK_BACKEND=x11 WAYLAND_DISPLAY= GSK_RENDERER=cairo GTK_THEME=Adwaita PYTHONPATH=desktop/gtk $(PYTHON) -m unittest vivo_desktop.backend_test vivo_desktop.media_test

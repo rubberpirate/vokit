@@ -5,6 +5,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sync"
 	"testing"
 	"time"
@@ -13,6 +14,15 @@ import (
 func privateTestSocket(t *testing.T, name string) string {
 	t.Helper()
 	dir := t.TempDir()
+	if runtime.GOOS == "darwin" {
+		// The usual macOS test temp prefix exceeds sockaddr_un.sun_path.
+		var err error
+		dir, err = os.MkdirTemp("/tmp", "vk-")
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = os.RemoveAll(dir) })
+	}
 	if err := os.Chmod(dir, 0700); err != nil {
 		t.Fatal(err)
 	}

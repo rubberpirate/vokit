@@ -58,6 +58,29 @@ The generated PKGBUILD has a checksum for the generated source archive; it does 
 
 ## Build
 
+### macOS preview (Apple Silicon and Intel)
+
+The **native macOS preview** uses SwiftUI and the existing Go backend, without GTK. The Mac workspace now includes QR pairing, connection status, incoming phone Share files, a browsable phone file library with upload/download/preview, a separate resizable phone mirroring window, front/rear in-app phone camera preview, optional plain-text clipboard sync, optional phone notifications, and a menu-bar connection menu. The connected workspace opens directly to Phone files, with device status and disconnect controls in the top bar. The file manager offers server-supported collections (recent/images/videos/audio/documents), phone folder browsing, a thumbnail grid/list toggle and search of the currently loaded pages. Thumbnail requests are limited to visible files and checked by the phone backend. Phone permission is required for file browsing, screen and camera sharing, clipboard and notifications. The QR rendezvous still uses the India-region vivo service and requires internet. QR pairing and an incoming file transfer have been observed with a real vivo phone on macOS; newly added features still require device acceptance testing.
+
+Install Go 1.23+ and Apple Command Line Tools (`xcode-select --install`). Install `qrencode` with Homebrew (`brew install qrencode`). Then run on a Mac:
+
+```sh
+make macos
+open build/VOkit.app
+```
+
+Click **Start pairing**, scan the QR with vivo Office Kit on the phone, and approve its connection prompt. Starting a pairing attempt authorizes first-use trust of that scanned phone for the session. Connect the Mac and phone to the same network. Received files appear in `~/Downloads/Vivo Office Kit`; Mac pairing state is stored in `~/Library/Application Support/VOkit/Pairing` with private permissions. Use Settings to opt into clipboard and notifications **before** pairing; changes require reconnecting. The menu-bar icon keeps connection controls available if the main window is closed. Quit/disconnect ends the session; no login item or background daemon is installed. To test the backend alone, run `go test ./...` or `go run ./cmd/vivolinux doctor`. The preview app is ad-hoc signed for local execution, but is not Apple Developer ID signed or notarized for distribution.
+
+When a `v<version>` tag matching `packaging/arch/PKGBUILD` is pushed, the [release workflow](.github/workflows/release.yml) builds the Linux source and Arch package plus four zipped macOS 13+ apps: ARM64/Intel, each in optimized `release` and unoptimized `debug` variants. The debug variant uses Swift `-Onone` and Go `-N -l`, retains debug symbols, and is larger/slower. Downloads include `SHA256SUMS`. Publication waits for **all** Linux and Mac builds and checks to succeed. The release workflow is only triggered by a version tag; opening a PR does not publish a release.
+
+Downloaded macOS apps remain unnotarized preview builds and may be blocked by Gatekeeper. Install `qrencode` using Homebrew on the destination Mac before starting QR pairing; it is not bundled. To build the variants locally, set `VOKIT_MACOS_BUILD_MODE=release` (default) or `debug`, `VOKIT_MACOS_APP_PATH=/path/to/VOkit.app`, and optionally `VOKIT_MACOS_VERSION=0.6.0` and `VOKIT_MACOS_BUILD_NUMBER=1` before running `make macos`. The main app, Go backend, and desktop helper are ad-hoc signed as a set.
+
+The Mac window now checks **Local Network** access via Bonjour before showing the QR code. On first use, accept the macOS permission prompt. On failure, verify access in **System Settings → Privacy & Security → Local Network** and retry with a new QR code. The previous code expires. The UI shows a safe explanation after errors; backend logs remain private in the pairing state directory. This permission flow still needs a fresh-install test because the development Mac has already granted access.
+
+Current macOS limitations: screen touch/drag, navigation keys, text input and quality controls are included but still require live phone acceptance. Phone camera video is currently visible **inside VOkit only**. To select it as a camera in Chrome or Google Meet, a macOS CoreMediaIO Camera Extension must publish a virtual video device, with a signed extension, an approved installation, a decoded-frame bridge from the phone stream, and end-to-end browser testing. The unsigned app does not currently install that extension or a virtual microphone. The Mac file manager does not yet match Linux's multi-select and in-memory media streaming previews; filters for individual messaging apps and recently deleted files are unavailable in the current phone API. Bluetooth transport, vivo account login, and cloud sync are also out of scope.
+
+### Linux
+
 Build dependencies: Go 1.23+ and Make. Runtime dependencies: Python 3 with PyGObject, GTK 4.16+, libadwaita 1.6+, GStreamer with base/good/bad/libav plugins, `qrencode`, `wl-clipboard` on Wayland, and PipeWire tools for optional audio sharing. Install the GStreamer GTK4 sink (`gst-plugin-gtk4` on Arch, `gstreamer1.0-gtk4` on Debian/Ubuntu) for the media viewer. Screen and camera preview also include a bounded RGB fallback. Tests use Xvfb and xauth. ADB/scrcpy remain optional command-line fallbacks.
 
 ```sh

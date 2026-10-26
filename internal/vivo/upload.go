@@ -16,9 +16,10 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"time"
 	"unicode/utf8"
+
+	"golang.org/x/sys/unix"
 )
 
 const MaxUploadBytes int64 = 1 << 30
@@ -241,7 +242,7 @@ func openUploadFile(localPath string) (*os.File, os.FileInfo, error) {
 		return nil, nil, errors.New("invalid upload source")
 	}
 	defer parent.Close()
-	fd, err := syscall.Openat(int(parent.Fd()), basename, syscall.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_CLOEXEC|syscall.O_NONBLOCK, 0)
+	fd, err := unix.Openat(int(parent.Fd()), basename, unix.O_RDONLY|unix.O_NOFOLLOW|unix.O_CLOEXEC|unix.O_NONBLOCK, 0)
 	if err != nil {
 		return nil, nil, errors.New("cannot open regular upload source")
 	}

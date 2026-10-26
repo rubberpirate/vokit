@@ -8,8 +8,9 @@ import (
 	"errors"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"unicode/utf8"
+
+	"golang.org/x/sys/unix"
 )
 
 // IncomingShare follows app-connection.js SHARE_TRANS_FILE:/FILE_TRANS_TAG: and
@@ -63,20 +64,21 @@ func PrepareReceiveDirectory(directory string) error {
 	if !filepath.IsAbs(directory) || filepath.Clean(directory) != directory || directory == "/" || strings.ContainsAny(directory, "\x00\\") {
 		return errors.New("receive directory must be a normalized absolute directory")
 	}
-	fd, err := syscall.Open("/", syscall.O_RDONLY|syscall.O_DIRECTORY|syscall.O_CLOEXEC, 0)
+	directory = macOSPhysicalPath(directory)
+	fd, err := unix.Open("/", unix.O_RDONLY|unix.O_DIRECTORY|unix.O_CLOEXEC, 0)
 	if err != nil {
 		return errors.New("cannot open receive directory")
 	}
-	defer func() { syscall.Close(fd) }()
+	defer func() { unix.Close(fd) }()
 	for _, part := range strings.Split(strings.TrimPrefix(directory, "/"), "/") {
-		if err = syscall.Mkdirat(fd, part, 0700); err != nil && !errors.Is(err, syscall.EEXIST) {
+		if err = unix.Mkdirat(fd, part, 0700); err != nil && !errors.Is(err, unix.EEXIST) {
 			return errors.New("cannot create receive directory")
 		}
-		next, e := syscall.Openat(fd, part, syscall.O_RDONLY|syscall.O_DIRECTORY|syscall.O_NOFOLLOW|syscall.O_CLOEXEC, 0)
+		next, e := openDirectoryAt(fd, part)
 		if e != nil {
 			return errors.New("receive directory traverses a symlink or is unavailable")
 		}
-		syscall.Close(fd)
+		unix.Close(fd)
 		fd = next
 	}
 	return nil

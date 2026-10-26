@@ -18,6 +18,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/coder/websocket"
@@ -30,6 +31,7 @@ type PhoneClient struct {
 }
 
 var errCertificatePinMismatch = errors.New("phone certificate changed; pinned certificate mismatch")
+var ErrPhoneNotListening = errors.New("phone is not yet accepting LAN connections")
 
 var ErrControlDisconnected = errors.New("phone closed the control transport; scan a fresh QR to reconnect")
 
@@ -141,6 +143,9 @@ func (p *PhoneClient) post(ctx context.Context, path string, s *Session, body an
 	if err != nil {
 		if ctx.Err() != nil {
 			return ctx.Err()
+		}
+		if errors.Is(err, syscall.ECONNREFUSED) {
+			return ErrPhoneNotListening
 		}
 		if errors.Is(err, errCertificatePinMismatch) {
 			return errCertificatePinMismatch

@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -15,6 +16,16 @@ import (
 
 type testRunner struct{}
 
+func TestDefaultSocketFitsDarwinPathLimit(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("Darwin Unix socket path limit")
+	}
+	t.Setenv("XDG_RUNTIME_DIR", "/var/folders/long-user-specific-runtime-directory")
+	if path := DefaultSocket(); len(path) >= 104 {
+		t.Fatalf("default socket path exceeds Darwin limit: %d bytes", len(path))
+	}
+}
+
 func (testRunner) Run(context.Context, string, ...string) ([]byte, error) {
 	return []byte("List of devices attached\nabc device model:Test\n"), nil
 }
@@ -23,11 +34,11 @@ func (testRunner) Stream(context.Context, string, ...string) error {
 }
 
 func TestServiceRoundTripAndShutdown(t *testing.T) {
-	dir := t.TempDir()
+	socket := privateTestSocket(t, "service.sock")
+	dir := filepath.Dir(socket)
 	if err := os.Chmod(dir, 0700); err != nil {
 		t.Fatal(err)
 	}
-	socket := filepath.Join(dir, "service.sock")
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	done := make(chan error, 1)
@@ -86,11 +97,11 @@ func TestServiceRoundTripAndShutdown(t *testing.T) {
 }
 
 func TestRejectInsecureDirectoryAndExistingSocket(t *testing.T) {
-	dir := t.TempDir()
+	socket := privateTestSocket(t, "service.sock")
+	dir := filepath.Dir(socket)
 	if err := os.Chmod(dir, 0755); err != nil {
 		t.Fatal(err)
 	}
-	socket := filepath.Join(dir, "service.sock")
 	client := android.Client{Runner: testRunner{}}
 	if err := Serve(context.Background(), socket, client); err == nil {
 		t.Fatal("accepted public directory")

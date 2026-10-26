@@ -13,9 +13,11 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"runtime"
 	"strings"
-	"syscall"
 	"time"
+
+	"golang.org/x/sys/unix"
 )
 
 const MaxDownloadBytes int64 = 1 << 30
@@ -108,19 +110,18 @@ func (p *PhoneClient) downloadFile(ctx context.Context, s *Session, entry FileEn
 		return result, err
 	}
 	defer parent.Close()
-	// Anchor all destination operations to the opened directory, even if renamed.
-	directory := fmt.Sprintf("/proc/self/fd/%d", parent.Fd())
-	destination := filepath.Join(directory, basename)
-	if _, err := os.Lstat(destination); err == nil {
+	var destinationStat unix.Stat_t
+	if err := unix.Fstatat(int(parent.Fd()), basename, &destinationStat, unix.AT_SYMLINK_NOFOLLOW); err == nil {
 		return result, ErrDownloadExists
-	} else if !errors.Is(err, os.ErrNotExist) {
+	} else if !errors.Is(err, unix.ENOENT) {
 		return result, errors.New("download destination is unavailable")
 	}
-	stage, err := os.CreateTemp(directory, ".vivo-download-*")
+	// Anchor all destination operations to the opened directory, even if renamed.
+	stage, stageName, err := createDownloadStage(parent)
 	if err != nil {
 		return result, errors.New("cannot create download staging file")
 	}
-	defer os.Remove(stage.Name())
+	defer unix.Unlinkat(int(parent.Fd()), stageName, 0)
 	defer stage.Close()
 	idBytes := make([]byte, 16)
 	if _, err := rand.Read(idBytes); err != nil {
@@ -168,8 +169,8 @@ func (p *PhoneClient) downloadFile(ctx context.Context, s *Session, entry FileEn
 	if err := ctx.Err(); err != nil {
 		return DownloadResult{}, err
 	}
-	if err := os.Link(stage.Name(), destination); err != nil {
-		if errors.Is(err, os.ErrExist) {
+	if err := unix.Linkat(int(parent.Fd()), stageName, int(parent.Fd()), basename, 0); err != nil {
+		if errors.Is(err, unix.EEXIST) {
 			return DownloadResult{}, ErrDownloadExists
 		}
 		return DownloadResult{}, errors.New("cannot commit download without replacing destination")
@@ -246,7 +247,8 @@ func openDownloadDirectory(output string) (*os.File, string, error) {
 	if err != nil {
 		return nil, "", errors.New("invalid download destination")
 	}
-	fd, err := syscall.Open("/", syscall.O_RDONLY|syscall.O_DIRECTORY|syscall.O_CLOEXEC, 0)
+	absolute = macOSPhysicalPath(absolute)
+	fd, err := unix.Open("/", unix.O_RDONLY|unix.O_DIRECTORY|unix.O_CLOEXEC, 0)
 	if err != nil {
 		return nil, "", errors.New("cannot open download directory")
 	}
@@ -254,12 +256,64 @@ func openDownloadDirectory(output string) (*os.File, string, error) {
 		if part == "" {
 			continue
 		}
-		next, openErr := syscall.Openat(fd, part, syscall.O_RDONLY|syscall.O_DIRECTORY|syscall.O_NOFOLLOW|syscall.O_CLOEXEC, 0)
-		syscall.Close(fd)
+		next, openErr := openDirectoryAt(fd, part)
+		unix.Close(fd)
 		if openErr != nil {
 			return nil, "", errors.New("download directory is unavailable or traverses a symlink")
 		}
 		fd = next
 	}
 	return os.NewFile(uintptr(fd), "download-directory"), filepath.Base(absolute), nil
+}
+
+// macOS exposes /tmp and /var as system symlink aliases. Map only those fixed
+// OS aliases to their physical paths; all user-selected path components are
+// still checked with O_NOFOLLOW during the descriptor walk.
+func macOSPhysicalPath(path string) string {
+	if runtime.GOOS != "darwin" {
+		return path
+	}
+	if strings.HasPrefix(path, "/tmp/") || path == "/tmp" {
+		return "/private" + path
+	}
+	if strings.HasPrefix(path, "/var/") || path == "/var" {
+		return "/private" + path
+	}
+	return path
+}
+
+func openDirectoryAt(parentFD int, name string) (int, error) {
+	fd, err := unix.Openat(parentFD, name, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
+	if err != nil {
+		return -1, err
+	}
+	var stat unix.Stat_t
+	if err := unix.Fstat(fd, &stat); err != nil {
+		unix.Close(fd)
+		return -1, err
+	}
+	if stat.Mode&unix.S_IFMT != unix.S_IFDIR {
+		unix.Close(fd)
+		return -1, unix.ENOTDIR
+	}
+	return fd, nil
+}
+
+func createDownloadStage(parent *os.File) (*os.File, string, error) {
+	for range 10 {
+		random := make([]byte, 16)
+		if _, err := rand.Read(random); err != nil {
+			return nil, "", err
+		}
+		name := ".vivo-download-" + hex.EncodeToString(random)
+		fd, err := unix.Openat(int(parent.Fd()), name, unix.O_WRONLY|unix.O_CREAT|unix.O_EXCL|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0600)
+		if errors.Is(err, unix.EEXIST) {
+			continue
+		}
+		if err != nil {
+			return nil, "", err
+		}
+		return os.NewFile(uintptr(fd), name), name, nil
+	}
+	return nil, "", errors.New("cannot allocate staging filename")
 }

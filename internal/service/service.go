@@ -10,6 +10,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sync"
 	"syscall"
 	"time"
@@ -27,7 +28,16 @@ type Response struct {
 
 func DefaultSocket() string {
 	if dir := os.Getenv("XDG_RUNTIME_DIR"); dir != "" {
-		return filepath.Join(dir, "vivolinux", "service.sock")
+		path := filepath.Join(dir, "vivolinux", "service.sock")
+		if runtime.GOOS != "darwin" || len(path) < 100 {
+			return path
+		}
+	}
+	// Darwin's sockaddr_un.sun_path is limited to 104 bytes. Its default temp
+	// directory includes a long per-user path, so keep the private socket root
+	// short enough for both the native and media sockets.
+	if runtime.GOOS == "darwin" {
+		return filepath.Join("/tmp", fmt.Sprintf("vivolinux-%d", os.Getuid()), "service.sock")
 	}
 	return filepath.Join(os.TempDir(), fmt.Sprintf("vivolinux-%d", os.Getuid()), "service.sock")
 }

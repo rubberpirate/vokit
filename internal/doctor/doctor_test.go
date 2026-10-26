@@ -4,6 +4,8 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
+	"slices"
 	"testing"
 )
 
@@ -16,11 +18,59 @@ func (r *probeRunner) Run(_ context.Context, name string, args ...string) ([]byt
 	}
 	return []byte("--video-source --no-audio"), nil
 }
+
+func TestPlatformToolLists(t *testing.T) {
+	macTools := toolNames("darwin")
+	for _, name := range []string{"brew", "pbcopy", "pbpaste", "open", "ffplay", "qrencode"} {
+		if !slices.Contains(macTools, name) {
+			t.Errorf("macOS tool list missing %q: %v", name, macTools)
+		}
+	}
+	for _, name := range []string{"systemctl", "wl-copy", "wl-paste", "xclip", "xdg-open", "pactl", "wpctl"} {
+		if slices.Contains(macTools, name) {
+			t.Errorf("Linux-only tool %q in macOS list", name)
+		}
+	}
+	linuxTools := toolNames("linux")
+	for _, name := range []string{"systemctl", "wl-copy", "wl-paste", "xclip", "xdg-open", "pactl", "wpctl", "qrencode", "ffplay"} {
+		if !slices.Contains(linuxTools, name) {
+			t.Errorf("Linux tool list changed; missing %q", name)
+		}
+	}
+}
+
+func TestDarwinReportAvoidsLinuxUSBProbe(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("Darwin environment check")
+	}
+	dir := t.TempDir()
+	for _, name := range []string{"brew", "pbcopy", "pbpaste", "ffplay", "qrencode"} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte("unused"), 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("PATH", dir)
+	t.Setenv("SSH_TTY", "")
+	t.Setenv("SSH_CONNECTION", "")
+	r := Collect(context.Background(), &probeRunner{})
+	if r.Session != "macos" || len(r.USBDevices) != 0 {
+		t.Fatalf("incorrect macOS environment report: %#v", r)
+	}
+	if !r.Capabilities["homebrew_available"] || !r.Capabilities["macos_clipboard_tooling"] || !r.Capabilities["native_qr_tooling"] || !r.Capabilities["native_video_preview_tooling"] {
+		t.Fatalf("installed macOS tools not reported: %#v", r.Capabilities)
+	}
+	if r.Capabilities["clipboard_sync_implemented"] || r.Capabilities["virtual_webcam_implemented"] {
+		t.Fatalf("macOS preview must not claim Linux-only features: %#v", r.Capabilities)
+	}
+}
 func (r *probeRunner) Stream(context.Context, string, ...string) error {
 	panic("doctor must not start an interactive process")
 }
 
 func TestDoctorDetectsToolsWithoutStartingADB(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("Linux session and clipboard checks")
+	}
 	dir := t.TempDir()
 	for _, name := range []string{"adb", "scrcpy", "wl-copy", "wl-paste"} {
 		if err := os.WriteFile(filepath.Join(dir, name), []byte("unused"), 0700); err != nil {

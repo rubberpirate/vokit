@@ -15,9 +15,7 @@ import (
 
 func startNativeTest(t *testing.T, handler func(context.Context, NativeRequest) (any, error)) (string, context.CancelFunc, <-chan error) {
 	t.Helper()
-	directory := t.TempDir()
-	os.Chmod(directory, 0700)
-	socket := filepath.Join(directory, "native.sock")
+	socket := privateTestSocket(t, "native.sock")
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() { done <- ServeNative(ctx, socket, handler) }()
@@ -200,8 +198,8 @@ func TestNativeShutdownClosesIdleAndActiveConnections(t *testing.T) {
 }
 
 func TestNativeRefusesInsecureDirectoryAndExistingPath(t *testing.T) {
-	directory := t.TempDir()
-	socket := filepath.Join(directory, "native.sock")
+	socket := privateTestSocket(t, "native.sock")
+	directory := filepath.Dir(socket)
 	handler := func(context.Context, NativeRequest) (any, error) { return nil, nil }
 	os.Chmod(directory, 0755)
 	if err := ServeNative(context.Background(), socket, handler); err == nil {

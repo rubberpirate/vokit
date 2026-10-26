@@ -12,7 +12,7 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  release:
+  linux:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -33,8 +33,99 @@ jobs:
           '
           version=$(sed -n 's/^pkgver=//p' packaging/arch/PKGBUILD)
           test "$GITHUB_REF_NAME" = "v$version"
-          cd build/arch-package
-          sha256sum "vokit-$version.tar.gz" "vokit-$version-1-x86_64.pkg.tar.zst" > SHA256SUMS
+          test -f "build/arch-package/vokit-$version.tar.gz"
+          test -f "build/arch-package/vokit-$version-1-x86_64.pkg.tar.zst"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: vokit-linux
+          path: |
+            build/arch-package/vokit-*.tar.gz
+            build/arch-package/vokit-*.pkg.tar.zst
+          if-no-files-found: error
+          retention-days: 7
+
+  macos:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            arch: arm64
+          - runner: macos-15-intel
+            arch: x86_64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Verify host and test Go code
+        run: |
+          test "$(uname -m)" = "${{ matrix.arch }}"
+          brew install qrencode
+          go test ./...
+          go vet ./...
+      - name: Build release and unoptimized Mac apps
+        env:
+          VOKIT_MACOS_VERSION: ${{ github.ref_name }}
+          VOKIT_MACOS_BUILD_NUMBER: ${{ github.run_number }}
+        run: |
+          set -euo pipefail
+          version="${VOKIT_MACOS_VERSION#v}"
+          test "$VOKIT_MACOS_VERSION" = "v$(sed -n 's/^pkgver=//p' packaging/arch/PKGBUILD)"
+          mkdir -p dist
+          for mode in release debug; do
+            export VOKIT_MACOS_BUILD_MODE="$mode"
+            export VOKIT_MACOS_VERSION="$version"
+            export VOKIT_MACOS_APP_PATH="$PWD/build/$mode/VOkit.app"
+            sh scripts/build-macos.sh
+            app="$VOKIT_MACOS_APP_PATH"
+            test "$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$app/Contents/Info.plist")" = "$version"
+            for binary in "$app/Contents/MacOS/VOkit" "$app/Contents/Resources/vivolinux" "$app/Contents/Resources/VOkitHelper.app/Contents/MacOS/VOkitHelper"; do
+              test "$(lipo -archs "$binary")" = "${{ matrix.arch }}"
+            done
+            ditto -c -k --sequesterRsrc --keepParent "$app" "dist/VOkit-v$version-macOS-${{ matrix.arch }}-$mode.zip"
+          done
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: vokit-macos-${{ matrix.arch }}
+          path: dist/*.zip
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    needs: [linux, macos]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: vokit-*
+          path: release-assets
+          merge-multiple: true
+      - name: Verify downloads and create checksums
+        run: |
+          set -euo pipefail
+          cd release-assets
+          version="${GITHUB_REF_NAME#v}"
+          test "$GITHUB_REF_NAME" = "v$(sed -n 's/^pkgver=//p' ../packaging/arch/PKGBUILD)"
+          test -f "vokit-$version.tar.gz"
+          test -f "vokit-$version-1-x86_64.pkg.tar.zst"
+          for arch in arm64 x86_64; do
+            for mode in release debug; do
+              file="VOkit-v$version-macOS-$arch-$mode.zip"
+              test -f "$file"
+              unzip -tq "$file" >/dev/null
+            done
+          done
+          sha256sum vokit-*.tar.gz vokit-*.pkg.tar.zst VOkit-*.zip > SHA256SUMS
       - name: Publish release downloads
         env:
           GH_TOKEN: ${{ github.token }}
@@ -47,14 +138,17 @@ jobs:
 
           - `vokit-<version>.tar.gz`: application source and installation script for supported Linux distributions. Extract it and run `./install.sh` as your desktop user.
           - `vokit-<version>-1-x86_64.pkg.tar.zst`: installable Arch Linux / CachyOS package. Run `sudo pacman -U ./vokit-*.pkg.tar.zst`.
-          - `SHA256SUMS`: checksums for both downloads; verify with `sha256sum -c SHA256SUMS`.
+          - `VOkit-v<version>-macOS-arm64-release.zip`: optimized macOS 13+ Apple Silicon app.
+          - `VOkit-v<version>-macOS-x86_64-release.zip`: optimized macOS 13+ Intel app.
+          - `VOkit-v<version>-macOS-<arch>-debug.zip`: unoptimized build for diagnosis (larger and slower).
+          - `SHA256SUMS`: checksums for every download; verify with `sha256sum -c SHA256SUMS` (or `shasum -a 256 -c SHA256SUMS` on macOS).
 
-          Webcam output additionally needs v4l2loopback and matching kernel headers. See the README for setup and supported system requirements.
+          The macOS builds are ad-hoc signed and **not Apple notarized**. Gatekeeper may prevent opening downloaded apps; these are preview builds. Install `qrencode` using Homebrew (`brew install qrencode`) before QR pairing. The macOS in-app camera is not a system virtual webcam. Webcam output on Linux additionally needs v4l2loopback and matching kernel headers.
 
-          This is an early prerelease. Vivo-account login, Notes/cloud sync and Remote PC are incomplete. Phone microphone sharing and notification handoff need further device testing. The release was built and tested on Arch Linux x86_64; compatibility with every laptop or vivo phone is not established.
+          This is an early prerelease. Vivo-account login, Notes/cloud sync and Remote PC are incomplete. Phone microphone sharing and notification handoff need further device testing. Compatibility with every laptop or vivo phone is not established.
           EOF
           gh release create "$GITHUB_REF_NAME" --verify-tag --draft --prerelease \
             --title "VOkit $GITHUB_REF_NAME" --notes-file /tmp/vokit-release-notes.md \
-            build/arch-package/vokit-*.tar.gz build/arch-package/vokit-[0-9]*.pkg.tar.zst \
-            build/arch-package/SHA256SUMS
+            release-assets/vokit-*.tar.gz release-assets/vokit-*.pkg.tar.zst \
+            release-assets/VOkit-*.zip release-assets/SHA256SUMS
           gh release edit "$GITHUB_REF_NAME" --draft=false

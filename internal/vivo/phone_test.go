@@ -64,6 +64,28 @@ func TestFirstUseConnectionFailsClosedWithoutRedial(t *testing.T) {
 	}
 }
 
+func TestFirstUseConnectionRefusedIsClassifiedWithoutTrust(t *testing.T) {
+	server := httptest.NewUnstartedServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	address := server.Listener.Addr().String()
+	server.Close()
+	client, err := newPhoneClientTrust("https://"+address, "", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+	_, err = client.Negotiate(context.Background(), &Session{Token: "secret"})
+	if !errors.Is(err, ErrPhoneNotListening) {
+		t.Fatalf("refused LAN listener should give retryable error: %v", err)
+	}
+	if client.CertificatePin() != "" || strings.Contains(err.Error(), "secret") || strings.Contains(err.Error(), address) {
+		t.Fatal("refused connection exposed a secret or pinned an unverified peer")
+	}
+	_, err = client.Negotiate(context.Background(), &Session{Token: "secret"})
+	if err == nil || errors.Is(err, ErrPhoneNotListening) {
+		t.Fatalf("failed client was reused after refusal: %v", err)
+	}
+}
+
 func TestFirstUsePinsActualHTTPConnectionAndReusesItForControl(t *testing.T) {
 	var mu sync.Mutex
 	connections := make(map[string]bool)

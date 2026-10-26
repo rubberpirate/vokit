@@ -8,7 +8,6 @@ import (
 	"io"
 	"net"
 	"os"
-	"path/filepath"
 	"testing"
 	"time"
 )
@@ -29,9 +28,7 @@ func TestMediaRequestQualityValidation(t *testing.T) {
 func TestMediaPrivateDuplexAndDisconnectCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	dir := t.TempDir()
-	os.Chmod(dir, 0700)
-	socket := filepath.Join(dir, "media.sock")
+	socket := privateTestSocket(t, "media.sock")
 	ready := make(chan struct{})
 	finished := make(chan struct{})
 	serverDone := make(chan error, 1)
@@ -115,11 +112,7 @@ func TestMediaPrivateDuplexAndDisconnectCancellation(t *testing.T) {
 func TestMediaSeparateScreenAndCameraConsumers(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	dir := t.TempDir()
-	if err := os.Chmod(dir, 0700); err != nil {
-		t.Fatal(err)
-	}
-	socket := filepath.Join(dir, "media.sock")
+	socket := privateTestSocket(t, "media.sock")
 	entered := make(chan string, 4)
 	done := make(chan error, 1)
 	go func() {
