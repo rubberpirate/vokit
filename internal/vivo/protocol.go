@@ -143,6 +143,9 @@ type Session struct {
 	StorageRoot  string `json:"-"`
 	DeviceName   string `json:"-"`
 	ExpiresAt    time.Time
+	// Domestic selects the China-mainland Office Kit contract: plain https QR
+	// and isOversea=false. The zero value keeps the export (global) contract.
+	Domestic bool `json:"-"`
 }
 
 func NewSession(identity Identity, hostname, localIP string) (*Session, error) {
@@ -180,8 +183,19 @@ func (s *Session) QR(base string) (string, error) {
 	if len(host) > 6 {
 		name = string(host[:3]) + "****" + string(host[len(host)-3:])
 	}
-	q := url.Values{"s": {s.SID}, "f": {"pc"}, "t": {s.Token}, "u": {""}, "d": {name}, "mac": {""}, "ls": {"false"}, "pb": {"0"}, "id": {s.Identity.DeviceID}}
-	u.RawQuery = q.Encode()
+	// Same parameter order as the vendor createQRCode(); values stay escaped.
+	var query strings.Builder
+	for i, field := range [][2]string{{"s", s.SID}, {"f", "pc"}, {"t", s.Token}, {"u", ""}, {"d", name}, {"mac", ""}, {"ls", "false"}, {"pb", "0"}, {"id", s.Identity.DeviceID}} {
+		if i > 0 {
+			query.WriteByte('&')
+		}
+		query.WriteString(field[0] + "=" + strings.ReplaceAll(url.QueryEscape(field[1]), "%2A", "*"))
+	}
+	u.RawQuery = query.String()
+	if s.Domestic {
+		// The China-mainland build keeps the plain https URL in the QR.
+		return u.String(), nil
+	}
 	return "pcsuite:" + strings.TrimPrefix(u.String(), "https://"), nil
 }
 

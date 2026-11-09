@@ -18,6 +18,7 @@ func TestPairRejectsInvalidOptionsBeforeNetwork(t *testing.T) {
 		{"--phone", "::ffff:10.1.2.3%wlan0"},
 		{"--receive-dir", "relative"}, {"--receive-dir", "/"}, {"--receive-dir", "/tmp/../unsafe"},
 		{"--phone", "10.1.2.3", "--trust-scanned-phone", "--phone-cert-sha256", strings.Repeat("a", 64)},
+		{"--region", "eu"},
 	} {
 		if _, err := parsePairOptions(args); err == nil {
 			t.Fatalf("accepted invalid options %q", args)
@@ -30,6 +31,13 @@ func TestPairRejectsInvalidOptionsBeforeNetwork(t *testing.T) {
 	options, err = parsePairOptions([]string{"--trust-scanned-phone"})
 	if err != nil || !options.trustScanned || options.phone.IsValid() {
 		t.Fatal("explicit first-use policy rejected", err)
+	}
+	if options.region.Domestic || options.region.Gateway != "https://in-psuite.vivo.com/vbusiness" {
+		t.Fatal("default region must stay global")
+	}
+	options, err = parsePairOptions([]string{"--region", "cn"})
+	if err != nil || !options.region.Domestic || options.region.Gateway != "https://psuite.vivo.com.cn/vbusiness" {
+		t.Fatal("China region rejected", err)
 	}
 }
 

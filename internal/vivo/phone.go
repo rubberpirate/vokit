@@ -159,7 +159,7 @@ func (p *PhoneClient) post(ctx context.Context, path string, s *Session, body an
 }
 
 func (p *PhoneClient) Negotiate(ctx context.Context, s *Session) (map[string]bool, error) {
-	version := map[string]any{"version": "7.0.6", "connBaseVersionCode": 1155, "pcSuiteVersionCode": 70007, "timestamp": time.Now().UnixMilli(), "connectionId": s.ConnectionID, "pcDeviceId": s.Identity.DeviceID, "isAutoConnect": false, "token": s.Token, "isOversea": true, "pcOsType": "linux", "pcOsVersion": runtime.GOOS + "/" + runtime.GOARCH}
+	version := map[string]any{"version": "7.0.6", "connBaseVersionCode": 1155, "pcSuiteVersionCode": 70007, "timestamp": time.Now().UnixMilli(), "connectionId": s.ConnectionID, "pcDeviceId": s.Identity.DeviceID, "isAutoConnect": false, "token": s.Token, "isOversea": !s.Domestic, "pcOsType": "linux", "pcOsVersion": runtime.GOOS + "/" + runtime.GOARCH}
 	var reply struct {
 		Code string `json:"code"`
 		Data struct {

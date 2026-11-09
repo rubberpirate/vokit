@@ -38,6 +38,7 @@ type pairOptions struct {
 	nativeSocket              string
 	fileAccess, mirror        bool
 	persistent                bool
+	region                    vivo.Region
 }
 
 func privateAddress(value string) (netip.Addr, error) {
@@ -54,7 +55,7 @@ func privateAddress(value string) (netip.Addr, error) {
 
 func parsePairOptions(args []string) (pairOptions, error) {
 	var options pairOptions
-	var phone string
+	var phone, region string
 	flags := flag.NewFlagSet("pair", flag.ContinueOnError)
 	flags.StringVar(&options.receiveDir, "receive-dir", "", "automatically receive phone Share files into this directory")
 	flags.StringVar(&options.stateDir, "state-dir", "build/pairing", "private pairing state directory")
@@ -74,7 +75,12 @@ func parsePairOptions(args []string) (pairOptions, error) {
 	flags.BoolVar(&options.fileAccess, "file-access", false, "request phone file access for commands on the active session")
 	flags.BoolVar(&options.mirror, "mirror-native", false, "experimental native video-only H.264 preview using ffplay")
 	flags.BoolVar(&options.persistent, "persistent", false, "keep the authorized session running until stopped or disconnected")
+	flags.StringVar(&region, "region", "global", "Office Kit build on the phone: global (export, India rendezvous) or cn (China mainland)")
 	if err := flags.Parse(args); err != nil {
+		return options, err
+	}
+	var err error
+	if options.region, err = vivo.ParseRegion(region); err != nil {
 		return options, err
 	}
 	if flags.NArg() != 0 {
@@ -89,7 +95,6 @@ func parsePairOptions(args []string) (pairOptions, error) {
 		}
 	}
 	if phone != "" {
-		var err error
 		options.phone, err = privateAddress(phone)
 		if err != nil {
 			return options, err
@@ -218,7 +223,8 @@ func runPair(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	cloud, err := vivo.NewRendezvous(vivo.IndiaGateway, id, nil)
+	session.Domestic = options.region.Domestic
+	cloud, err := vivo.NewRendezvous(options.region.Gateway, id, nil)
 	if err != nil {
 		return err
 	}
@@ -252,7 +258,7 @@ func runPair(ctx context.Context, args []string) error {
 	if err := cloud.Begin(ctx, session); err != nil {
 		return err
 	}
-	uri, err := session.QR(vivo.IndiaGateway)
+	uri, err := session.QR(options.region.Gateway)
 	if err != nil {
 		return err
 	}
