@@ -28,7 +28,7 @@ def deliver(callback, *args):
 
 
 class Settings:
-    KEYS = {"phone", "manual_phone", "receive_dir", "clipboard", "notifications", "theme", "window_width", "window_height", "list_mode"}
+    KEYS = {"phone", "manual_phone", "region", "receive_dir", "clipboard", "notifications", "theme", "window_width", "window_height", "list_mode"}
 
     def __init__(self, path=None):
         self.path = Path(path) if path else Path(os.environ.get("XDG_CONFIG_HOME", str(Path.home()/".config"))) / "vivo-office-kit/preferences.json"
@@ -194,7 +194,7 @@ class Backend:
         self.pool.submit(work)
         return handle
 
-    def pair(self, phone, trust, receive_dir, clipboard, notifications, on_event, on_exit):
+    def pair(self, phone, trust, receive_dir, clipboard, notifications, on_event, on_exit, region="global"):
         if self.owned: return self.pair_process
         handle = ProcessHandle()
         self.pair_process = handle
@@ -203,6 +203,7 @@ class Backend:
         if trust: args.append("--trust-scanned-phone")
         if clipboard: args.append("--clipboard")
         if notifications: args.append("--notifications")
+        if region == "cn": args.extend(["--region", "cn"])
         def work():
             code = 1
             try:

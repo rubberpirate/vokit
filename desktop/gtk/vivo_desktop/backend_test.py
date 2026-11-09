@@ -82,6 +82,18 @@ class BackendTests(unittest.TestCase):
         finally:
             backend.close()
 
+    def test_pair_passes_china_region_only_when_selected(self):
+        script = 'import sys,json\nr=sys.argv[sys.argv.index("--region")+1] if "--region" in sys.argv else None\nprint(json.dumps({"stage":"arguments","region":r}),flush=True)\n'
+        for region, expected in (("global", None), ("cn", "cn")):
+            backend = Backend(self.cli(script))
+            events = []
+            try:
+                value, error = self.wait(lambda done: backend.pair("", True, str(self.root / "Receive files"), False, False, events.append, lambda code: done({"exit":code}, None), region=region))
+                self.assertIsNone(error)
+                self.assertEqual(events[0]["region"], expected)
+            finally:
+                backend.close()
+
     def test_pair_events_and_receive_folder_survive_spaces(self):
         backend = Backend(self.cli('import sys,json\nprint(json.dumps({"stage":"control_connected","count":len(sys.argv)}),flush=True)\n'))
         events = []
@@ -166,7 +178,7 @@ class BatchDispatchTests(unittest.TestCase):
     def test_connect_opens_pairing_without_ip_or_trust_toggle(self):
         from .app import Adw, OfficeWindow, _TestBackend, _TestSettings
         class Backend(_TestBackend):
-            def pair(self, *args): self.pair_arguments = args
+            def pair(self, *args, region="global"): self.pair_arguments, self.pair_region = args, region
         backend = Backend()
         app = Adw.Application(application_id="org.vokit.QRConnectTest")
         settings = _TestSettings()
@@ -180,6 +192,7 @@ class BatchDispatchTests(unittest.TestCase):
             self.assertTrue(window.owned)
             self.assertEqual(backend.pair_arguments[0], "")
             self.assertTrue(backend.pair_arguments[1])
+            self.assertEqual(backend.pair_region, "global")
             self.assertNotIn("trust", settings.values)
         finally:
             window.shutdown()

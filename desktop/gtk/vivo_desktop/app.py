@@ -543,12 +543,18 @@ class OfficeWindow(Adw.ApplicationWindow):
         self.phone_entry = Adw.EntryRow(title="Phone IP override (optional)", text=self.preferences.get("manual_phone", ""))
         advanced.add_row(self.phone_entry)
         connection.add(advanced)
+        self.region_row = Adw.ComboRow(title="Office Kit version on the phone",
+            subtitle="China-mainland phones (OriginOS CN firmware) pair through vivo's China server.",
+            model=Gtk.StringList.new(["Global", "China mainland"]))
+        self.region_row.set_selected(1 if self.preferences.get("region", "global") == "cn" else 0)
+        connection.add(self.region_row)
         self.clipboard_switch = Adw.SwitchRow(title="Share plain-text clipboard", active=bool(self.preferences.get("clipboard", False)))
         self.notification_switch = Adw.SwitchRow(title="Phone and connection notifications",
             subtitle="Forward phone notifications to this desktop. Applies after reconnecting.", active=bool(self.preferences.get("notifications", True)))
         connection.add(self.clipboard_switch)
         connection.add(self.notification_switch)
         self.phone_entry.connect("notify::text", lambda *_: self._save_preferences())
+        self.region_row.connect("notify::selected", lambda *_: self._save_preferences())
         self.clipboard_switch.connect("notify::active", lambda *_: self._save_preferences())
         self.notification_switch.connect("notify::active", lambda *_: self._save_preferences())
         page.add(connection)
@@ -1099,7 +1105,7 @@ class OfficeWindow(Adw.ApplicationWindow):
         try:
             self.backend.pair(phone, True, receive,
                 self.clipboard_switch.get_active(), self.notification_switch.get_active(),
-                self._pair_event, self._pair_exited)
+                self._pair_event, self._pair_exited, region=self._region())
         except (OSError, RuntimeError, ValueError):
             self.owned = False
             self.connection_status.set_text("The connection could not start. Check the installed backend.")
@@ -1173,10 +1179,14 @@ class OfficeWindow(Adw.ApplicationWindow):
 
         dialog.select_folder(self, None, selected)
 
+    def _region(self):
+        return "cn" if self.region_row.get_selected() == 1 else "global"
+
     def _save_preferences(self):
         if not hasattr(self, "receive_entry"):
             return
         for key, value in (("manual_phone", self.phone_entry.get_text().strip()),
+                           ("region", self._region()),
                            ("receive_dir", self.receive_entry.get_text().strip()),
                            ("clipboard", self.clipboard_switch.get_active()),
                            ("notifications", self.notification_switch.get_active())):
@@ -1404,8 +1414,12 @@ class OfficeApplication(Adw.Application):
             assert "--path" in window._listing_arguments(0)
             window.category = "recent"
             assert window.phone_entry.get_text() == ""
+            assert window._region() == "global"
+            window.region_row.set_selected(1)
+            assert window._region() == "cn" and self.settings.values.get("region") == "cn"
+            window.region_row.set_selected(0)
             window._save_preferences()
-            assert "trust" not in self.settings.values
+            assert "trust" not in self.settings.values and self.settings.values.get("region") == "global"
             window._apply_theme("light")
             assert not Adw.StyleManager.get_default().get_dark()
             window._apply_theme("dark")
