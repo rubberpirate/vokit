@@ -6,7 +6,127 @@ import threading
 import unittest
 
 from gi.repository import GLib
-from .backend import Backend, Settings
+from .backend import Autostart, Backend, Settings
+
+
+class AutostartTests(unittest.TestCase):
+    def test_enable_disable_and_existing_desktop_setting(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            executable = root / 'VOkit with spaces'
+            executable.write_text('#!/bin/sh\n')
+            executable.chmod(0o755)
+            startup = Autostart(root / 'autostart', executable)
+            self.assertFalse(startup.enabled())
+            startup.set_enabled(True)
+            self.assertTrue(startup.enabled())
+            self.assertIn('Exec="' + str(executable) + '" --background', startup.path.read_text())
+            startup.path.write_text(startup.path.read_text() + 'Hidden=true\n')
+            self.assertFalse(startup.enabled())
+            startup.set_enabled(True)
+            self.assertTrue(startup.enabled())
+            startup.set_enabled(False)
+            self.assertFalse(startup.path.exists())
+
+    def test_existing_entry_is_migrated_without_losing_settings(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            executable = root / 'vokit'
+            executable.write_text('#!/bin/sh\n')
+            executable.chmod(0o755)
+            startup = Autostart(root, executable)
+            original = '[Desktop Entry]\nType=Application\nName=VOkit\nExec="' + str(executable) + '"\nX-VOkit-Managed=true\nX-GNOME-Autostart-Delay=3\n'
+            startup.path.write_text(original)
+            startup.migrate_background()
+            self.assertEqual(startup.path.read_text(), original.replace('"\nX-VOkit', '" --background\nX-VOkit'))
+            startup.migrate_background()
+            self.assertEqual(startup.path.read_text().count('--background'), 1)
+
+    def test_background_activation_keeps_window_hidden_until_opened(self):
+        from unittest.mock import Mock
+        from .app import OfficeApplication, _TestBackend, _TestSettings
+        app = OfficeApplication(_TestBackend(), _TestSettings(), testing=True)
+        window = Mock()
+        app._ensure_window = Mock(return_value=window)
+        app.update_tray = Mock()
+        app.start_in_background = True
+        app.do_activate()
+        window.present.assert_not_called()
+        app.do_activate()
+        window.present.assert_called_once()
+
+    def test_unmanaged_and_symlink_entries_are_preserved(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            executable = root / 'vokit'
+            executable.write_text('#!/bin/sh\n')
+            executable.chmod(0o755)
+            startup = Autostart(root, executable)
+            startup.path.write_text('[Desktop Entry]\nName=Other\n')
+            for enabled in (True, False):
+                with self.assertRaises(OSError): startup.set_enabled(enabled)
+            self.assertIn('Name=Other', startup.path.read_text())
+            startup.path.unlink()
+            startup.path.symlink_to(executable)
+            with self.assertRaises(OSError): startup.set_enabled(True)
+            self.assertEqual(executable.read_text(), '#!/bin/sh\n')
+
+    def test_settings_switch_recovers_from_write_failure(self):
+        from unittest.mock import patch
+        from .app import Adw, OfficeWindow, _TestBackend, _TestSettings
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            executable = root / 'vokit'
+            executable.write_text('#!/bin/sh\n')
+            executable.chmod(0o755)
+            startup = Autostart(root / 'autostart', executable)
+            app = Adw.Application(application_id='org.vokit.AutostartTest')
+            app.backend, app.settings = _TestBackend(), _TestSettings()
+            app.register(None)
+            with patch('vivo_desktop.app.Autostart', return_value=startup):
+                window = OfficeWindow(app)
+            try:
+                window.autostart_switch.set_active(True)
+                self.assertTrue(startup.enabled())
+                with patch.object(startup, 'set_enabled', side_effect=OSError('test failure')):
+                    window.autostart_switch.set_active(False)
+                self.assertTrue(window.autostart_switch.get_active())
+                self.assertIn('test failure', window.autostart_switch.get_subtitle())
+                window.autostart_switch.set_active(False)
+                self.assertFalse(startup.enabled())
+            finally:
+                window.shutdown()
+                window.destroy()
+                app.backend.close()
+
+
+class DirectSetupTests(unittest.TestCase):
+    def test_button_tracks_install_and_uninstall(self):
+        from unittest.mock import Mock, patch
+        from types import SimpleNamespace
+        from .app import OfficeWindow
+        window = SimpleNamespace(direct_install_button=Mock(), direct_row=Mock())
+        for installed, expected in ((False, 'Install'), (True, 'Uninstall')):
+            with patch('pathlib.Path.exists', return_value=installed):
+                OfficeWindow._refresh_direct_setup(window)
+            window.direct_install_button.set_label.assert_called_with(expected)
+
+    def test_uninstall_runs_installer_and_refreshes_button(self):
+        from unittest.mock import Mock, patch
+        from types import SimpleNamespace
+        from .app import OfficeWindow
+        window = SimpleNamespace(direct_install_button=Mock(), direct_row=Mock(), _refresh_direct_setup=Mock())
+        process = Mock()
+        process.communicate_utf8_finish.return_value = (True, '', '')
+        process.get_successful.return_value = True
+        with patch('vivo_desktop.app.Gio.Subprocess.new', return_value=process) as start:
+            OfficeWindow._run_direct_installer(window, Path('/usr/lib/test'), None)
+        self.assertEqual(start.call_args.args[0][-1], 'uninstall')
+        self.assertFalse(window.direct_install_button.set_sensitive.call_args.args[0])
+        callback = process.communicate_utf8_async.call_args.args[2]
+        callback(process, object())
+        window.direct_install_button.set_sensitive.assert_called_with(True)
+        window._refresh_direct_setup.assert_called_once_with('Wi-Fi Direct setup was removed.')
 
 
 class BackendTests(unittest.TestCase):
@@ -91,6 +211,35 @@ class BackendTests(unittest.TestCase):
         self.assertEqual(events[0]["stage"], "control_connected")
         backend.close()
 
+    def test_direct_pair_passes_mode_without_starting_another_helper(self):
+        backend = Backend(self.cli('import sys,json\nprint(json.dumps({"stage":"arguments","args":sys.argv[1:]}),flush=True)\n'))
+        events = []
+        try:
+            value, error = self.wait(lambda done: backend.pair("", True, str(self.root), False, False,
+                events.append, lambda code: done({"exit":code}, None), wifi_direct=True, region="china"))
+            self.assertIsNone(error)
+            self.assertEqual(value["exit"], 0)
+            self.assertIn("--wifi-direct", events[0]["args"])
+            self.assertNotIn("--local-ip", events[0]["args"])
+            args = events[0]["args"]
+            self.assertEqual(args[args.index("--region") + 1], "china")
+        finally:
+            backend.close()
+
+    def test_child_process_inherits_the_selected_interface_language(self):
+        from unittest.mock import patch
+        from . import i18n
+        backend = Backend(self.cli('import os,json\nprint(json.dumps({"language":os.environ.get("VOKIT_LANGUAGE")}))\n'))
+        with patch.dict(os.environ, {"VOKIT_LANGUAGE": "system"}):
+            try:
+                i18n.configure("ja")
+                value, error = self.wait(lambda done: backend.call(["native-status"], done))
+                self.assertIsNone(error)
+                self.assertEqual(value["language"], "ja")
+            finally:
+                backend.close()
+                i18n.configure("en")
+
 
 class TransferBoundaryTests(unittest.TestCase):
     def test_batch_download_names_preserve_existing_files(self):
@@ -166,7 +315,7 @@ class BatchDispatchTests(unittest.TestCase):
     def test_connect_opens_pairing_without_ip_or_trust_toggle(self):
         from .app import Adw, OfficeWindow, _TestBackend, _TestSettings
         class Backend(_TestBackend):
-            def pair(self, *args): self.pair_arguments = args
+            def pair(self, *args, **kwargs): self.pair_arguments, self.pair_options = args, kwargs
         backend = Backend()
         app = Adw.Application(application_id="org.vokit.QRConnectTest")
         settings = _TestSettings()
@@ -176,11 +325,29 @@ class BatchDispatchTests(unittest.TestCase):
         window = OfficeWindow(app)
         try:
             self.assertEqual(window.phone_entry.get_text(), "")
-            window._connection_action()
+            window._start_pair()
             self.assertTrue(window.owned)
             self.assertEqual(backend.pair_arguments[0], "")
             self.assertTrue(backend.pair_arguments[1])
             self.assertNotIn("trust", settings.values)
+            self.assertEqual(backend.pair_options, {})
+            window.owned = False
+            window._start_pair(wifi_direct=True)
+            self.assertEqual(backend.pair_options, {"wifi_direct": True})
+            self.assertIn('45 seconds', window.pair_progress_label.get_text())
+            window.owned = False
+            window.region_row.set_selected(1)
+            window._start_pair(wifi_direct=True)
+            self.assertEqual(backend.pair_options, {"wifi_direct": True, "region": "china"})
+            self.assertEqual(settings.get("region"), "china")
+            window.owned = False
+            window._start_pair()
+            self.assertEqual(backend.pair_options, {"region": "china"})
+            window._pair_event({"stage":"pairing_failed", "code":"wifi_direct_backend_busy"})
+            self.assertIn("port is busy", window.receipt.get_text())
+            self.assertIn("port is busy", window.pair_progress_label.get_text())
+            window._pair_exited(1)
+            self.assertIsNotNone(window.pair_progress_dialog)
         finally:
             window.shutdown()
             window.destroy()

@@ -1,4 +1,14 @@
 post_install() {
+    # A user-level launcher or command takes precedence over the system package.
+    # Do not delete or overwrite files in users' home directories from pacman.
+    if command -v getent >/dev/null 2>&1; then
+        getent passwd | while IFS=: read -r name _ uid _ _ home _; do
+            [ "$uid" -ge 1000 ] 2>/dev/null || continue
+            if [ -e "$home/.local/bin/vokit" ] || [ -e "$home/.local/share/applications/io.github.vivolinux.OfficeKit.desktop" ]; then
+                echo "VOkit: $name has a personal installation that may override this package; remove the old personal installation before launching."
+            fi
+        done
+    fi
     if command -v udevadm >/dev/null 2>&1; then
         udevadm control --reload-rules || true
         udevadm trigger --subsystem-match=video4linux || true

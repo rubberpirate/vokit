@@ -15,6 +15,8 @@ func TestPairRejectsInvalidOptionsBeforeNetwork(t *testing.T) {
 		{"--phone", "8.8.8.8"}, {"--phone-cert-sha256", "invalid"},
 		{"--duration", "0s"}, {"--duration", "25h"}, {"unexpected"},
 		{"--local-ip", "not-an-ip"}, {"--phone", "localhost"},
+		{"--wifi-direct", "--local-ip", "192.168.49.1"},
+		{"--region", "unknown"}, {"--region", ""},
 		{"--phone", "::ffff:10.1.2.3%wlan0"},
 		{"--receive-dir", "relative"}, {"--receive-dir", "/"}, {"--receive-dir", "/tmp/../unsafe"},
 		{"--phone", "10.1.2.3", "--trust-scanned-phone", "--phone-cert-sha256", strings.Repeat("a", 64)},
@@ -30,6 +32,23 @@ func TestPairRejectsInvalidOptionsBeforeNetwork(t *testing.T) {
 	options, err = parsePairOptions([]string{"--trust-scanned-phone"})
 	if err != nil || !options.trustScanned || options.phone.IsValid() {
 		t.Fatal("explicit first-use policy rejected", err)
+	}
+	options, err = parsePairOptions([]string{"--wifi-direct", "--trust-scanned-phone"})
+	if err != nil || !options.wifiDirect {
+		t.Fatal("Wi-Fi Direct mode rejected", err)
+	}
+	if options.region != "overseas" {
+		t.Fatal("changed default region")
+	}
+	for _, direct := range []bool{false, true} {
+		args := []string{"--region", "china"}
+		if direct {
+			args = append(args, "--wifi-direct")
+		}
+		options, err = parsePairOptions(args)
+		if err != nil || options.region != "china" || options.wifiDirect != direct {
+			t.Fatal("China mode rejected", err)
+		}
 	}
 }
 

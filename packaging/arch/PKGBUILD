@@ -1,21 +1,22 @@
 # Build using scripts/build-arch-package.sh from the source checkout.
 pkgname=vokit
-pkgver=0.6.0
+pkgver=0.6.5
 pkgrel=1
 pkgdesc='VOkit: independent native Linux desktop companion for compatible vivo phones'
 arch=('x86_64' 'aarch64')
 license=('LicenseRef-Unspecified')
-depends=('gtk4>=4.16' 'libadwaita>=1.6' 'python-gobject' 'python-cairo' 'gstreamer' 'gst-plugins-base' 'gst-plugins-good' 'gst-plugins-bad' 'gst-libav' 'gst-plugin-gtk4' 'qrencode' 'wl-clipboard' 'pipewire-audio' 'xdg-utils')
+depends=('bluez' 'python-dbus' 'gtk4>=4.16' 'libadwaita>=1.6' 'python-gobject' 'python-cairo' 'gstreamer' 'gst-plugins-base' 'gst-plugins-good' 'gst-plugins-bad' 'gst-libav' 'gst-plugin-gtk4' 'qrencode' 'wl-clipboard' 'pipewire-audio' 'xdg-utils' 'polkit' 'dnsmasq' 'iproute2' 'networkmanager' 'libnl' 'openssl')
 install="$pkgname.install"
 provides=('vivo-office-kit-linux')
 conflicts=('vivo-office-kit-linux')
 backup=('etc/modprobe.d/vivo-phone-camera.conf' 'etc/modules-load.d/vivo-phone-camera.conf')
-makedepends=('go>=1.23' 'make')
+makedepends=('go>=1.23' 'make' 'gcc' 'patch' 'pkgconf')
 checkdepends=('xorg-server-xvfb' 'xorg-xauth')
-optdepends=('v4l2loopback-dkms: publish a virtual webcam (requires matching kernel headers)')
-source=("vokit-${pkgver}.tar.gz")
+optdepends=('chromium: interactive vivo account sign-in' 'v4l2loopback-dkms: publish a virtual webcam (requires matching kernel headers)')
+options=('!strip' '!debug')
+source=("vokit-${pkgver}.tar.gz" 'https://w1.fi/releases/wpa_supplicant-2.12.tar.gz')
 # Locally generated source snapshot; the wrapper replaces this with its SHA-256.
-sha256sums=('SKIP')
+sha256sums=('SKIP' '08e23937e16d0155e55cab2b51f51fbe10d80a1aa91c4e15442645059b737ef6')
 
 build() {
     cd "$srcdir/vokit-${pkgver}"
@@ -26,6 +27,7 @@ build() {
     # Keep makepkg's source tree removable on the next clean build.
     export GOFLAGS='-modcacherw'
     make build desktop
+    make wifi-direct WIFI_DIRECT_ARCHIVE="$srcdir/wpa_supplicant-2.12.tar.gz"
 }
 
 check() {

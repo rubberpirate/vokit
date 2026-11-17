@@ -24,4 +24,14 @@ distribution builds; consult the installed packages before redistributing
 binary bundles. No copies of those libraries, Linux kernel modules or vivo
 vendor binaries are included here.
 
+The optional Wi-Fi Direct service is adapted from the local vivo_connect
+project. Its private supplicant is built from wpa_supplicant 2.12; the
+upstream BSD license is included as wifi-direct/build/private-p2p/bin/COPYING
+in the installed application. The project patch and build configuration are
+included with the service source.
+
+The finite BlueZ Bluetooth transport and the account/preconnection protocol
+implementation are adapted from the local vivo_connect project. They include
+no captured credentials, device identifiers or vendor executables.
+
 The project itself has no selected redistribution license yet.

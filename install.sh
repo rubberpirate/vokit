@@ -25,10 +25,14 @@ if [[ -n "$stage" ]]; then
 fi
 # Build as the desktop user; elevate only package management and file installation.
 [[ $EUID != 0 ]] || { echo 'Run as your regular desktop user; the installer uses sudo when needed.' >&2; exit 2; }
+if [[ -e "$HOME/.local/bin/vokit" || -e "$HOME/.local/share/applications/io.github.vivolinux.OfficeKit.desktop" ]]; then
+    echo 'An existing personal VOkit installation may override the system installation. Remove the old personal application files first; keep your settings and pairing data.' >&2
+    [[ "$mode" == check ]] || exit 1
+fi
 . /etc/os-release
 family=" ${ID:-} ${ID_LIKE:-} "
 if [[ "$family" == *arch* || "$family" == *cachyos* ]]; then
-    packages=(go make python-gobject python-cairo gtk4 libadwaita gstreamer gst-plugins-base gst-plugins-good gst-plugins-bad gst-libav gst-plugin-gtk4 qrencode wl-clipboard pipewire-audio xdg-utils)
+    packages=(bluez python-dbus go make gcc patch pkgconf libnl openssl polkit dnsmasq iproute2 networkmanager python-gobject python-cairo gtk4 libadwaita gstreamer gst-plugins-base gst-plugins-good gst-plugins-bad gst-libav gst-plugin-gtk4 qrencode wl-clipboard pipewire-audio xdg-utils desktop-file-utils hicolor-icon-theme)
     pkgcmd=(sudo pacman -S --needed)
     if ((webcam)); then
         kernelbase=$(cat "/usr/lib/modules/$(uname -r)/pkgbase" 2>/dev/null || true)
@@ -36,7 +40,7 @@ if [[ "$family" == *arch* || "$family" == *cachyos* ]]; then
         packages+=(v4l2loopback-dkms "${kernelbase}-headers")
     fi
 elif [[ "$family" == *debian* || "$family" == *ubuntu* ]]; then
-    packages=(golang-go make python3-gi python3-gi-cairo gir1.2-gtk-4.0 gir1.2-adw-1 gir1.2-gstreamer-1.0 gir1.2-gst-plugins-base-1.0 libgtk-4-media-gstreamer gstreamer1.0-gtk4 gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-libav qrencode wl-clipboard pipewire-bin xdg-utils)
+    packages=(bluez python3-dbus golang-go make gcc patch pkg-config libnl-3-dev libnl-genl-3-dev libssl-dev policykit-1 dnsmasq iproute2 network-manager python3-gi python3-gi-cairo gir1.2-gtk-4.0 gir1.2-adw-1 gir1.2-gstreamer-1.0 gir1.2-gst-plugins-base-1.0 libgtk-4-media-gstreamer gstreamer1.0-gtk4 gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-libav qrencode wl-clipboard pipewire-bin xdg-utils desktop-file-utils hicolor-icon-theme)
     pkgcmd=(sudo apt-get install)
     ((webcam == 0)) || packages+=(v4l2loopback-dkms "linux-headers-$(uname -r)")
 else
@@ -53,8 +57,9 @@ fi
 "${pkgcmd[@]}" "${packages[@]}"
 go_version=$(go env GOVERSION)
 [[ "$(printf '%s\n' go1.23 "$go_version" | sort -V | head -n1)" == go1.23 ]] || { echo 'Go 1.23 or later is required; install a newer Go toolchain.' >&2; exit 1; }
-make build desktop
+make build desktop wifi-direct
 sudo make PREFIX=/usr/local install-files
+sudo make PREFIX=/usr/local refresh-desktop
 if ((webcam)); then
     # Existing administrator configuration always wins, including a different video number.
     for entry in 'udev/70-vivo-phone-camera.rules:/usr/lib/udev/rules.d/70-vivo-phone-camera.rules' 'modprobe/vivo-phone-camera.conf:/etc/modprobe.d/vivo-phone-camera.conf' 'modules-load/vivo-phone-camera.conf:/etc/modules-load.d/vivo-phone-camera.conf'; do

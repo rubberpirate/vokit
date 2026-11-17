@@ -1,0 +1,12 @@
+#!/usr/bin/env python3
+from pathlib import Path
+import sys
+root = Path(__file__).resolve().parent
+sys.path.insert(0, str(root))
+sys.path.insert(0, str(root.parent / 'lib/vivo-office-kit'))
+from vivo_desktop.bluetooth_transport import main, emit
+try:
+    main()
+except Exception:
+    emit({'type': 'error', 'code': 'BLUETOOTH_UNAVAILABLE'})
+    raise SystemExit(1)

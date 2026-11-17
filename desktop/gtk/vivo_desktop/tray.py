@@ -1,4 +1,5 @@
 """StatusNotifierItem and DBusMenu export on the existing session bus."""
+from .i18n import gettext as _
 import functools
 import math
 import sys
@@ -145,7 +146,7 @@ class StatusTray:
             return
         self.state = state
         color = 'connected' if connected else 'connecting' if connecting else 'disconnected'
-        status = f'Connected · {device}' if connected and device else 'Connected' if connected else 'Connecting…' if connecting else 'Disconnected'
+        status = _('Connected · {value0}').format(value0=device) if connected and device else _('Connected') if connected else _('Connecting…') if connecting else _('Disconnected')
         pixmaps = icon_pixmaps(color)
         self.properties = {
             'Category': GLib.Variant('s', 'ApplicationStatus'), 'Id': GLib.Variant('s', 'vokit'),
@@ -161,15 +162,15 @@ class StatusTray:
         self.items = {
             0: ({'children-display': GLib.Variant('s', 'submenu')}, None),
             1: self._entry(status.replace('_', '__'), enabled=False), 2: separator,
-            3: self._entry('Open VOkit', 'show', icon='phone-symbolic'),
-            4: self._entry('Phone mirroring', 'mirror', connected, 'video-display-symbolic'),
-            5: self._entry('Stop mirroring', 'stop-mirror', mirroring, 'media-playback-stop-symbolic'),
-            6: self._entry('Camera & microphone', 'camera', connected, 'camera-video-symbolic'),
-            7: self._entry('Browse phone files', 'files', connected, 'folder-remote-symbolic'),
-            8: self._entry('Settings', 'settings', icon='preferences-system-symbolic'),
-            9: self._entry('Disconnect phone' if owned else 'Connected session' if external else 'Connect phone',
+            3: self._entry(_('Open VOkit'), 'show', icon='phone-symbolic'),
+            4: self._entry(_('Phone mirroring'), 'mirror', connected, 'video-display-symbolic'),
+            5: self._entry(_('Stop mirroring'), 'stop-mirror', mirroring, 'media-playback-stop-symbolic'),
+            6: self._entry(_('Camera & microphone'), 'camera', connected, 'camera-video-symbolic'),
+            7: self._entry(_('Browse phone files'), 'files', connected, 'folder-remote-symbolic'),
+            8: self._entry(_('Settings'), 'settings', icon='preferences-system-symbolic'),
+            9: self._entry(_('Disconnect phone') if owned else _('Connected session') if external else _('Connect phone'),
                            'connection', owned or not external, 'network-wireless-symbolic'),
-            10: separator, 11: self._entry('Quit VOkit', 'quit', icon='application-exit-symbolic'),
+            10: separator, 11: self._entry(_('Quit VOkit'), 'quit', icon='application-exit-symbolic'),
         }
         self.revision = self.revision % 0xffffffff + 1
         for signal in ('NewIcon', 'NewTitle', 'NewToolTip'):

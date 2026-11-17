@@ -38,6 +38,10 @@ type pairOptions struct {
 	nativeSocket              string
 	fileAccess, mirror        bool
 	persistent                bool
+	wifiDirect                bool
+	region                    vivo.Region
+	remember, resume, forget  bool
+	bluetoothPower            bool
 }
 
 func privateAddress(value string) (netip.Addr, error) {
@@ -55,6 +59,7 @@ func privateAddress(value string) (netip.Addr, error) {
 func parsePairOptions(args []string) (pairOptions, error) {
 	var options pairOptions
 	var phone string
+	var region string
 	flags := flag.NewFlagSet("pair", flag.ContinueOnError)
 	flags.StringVar(&options.receiveDir, "receive-dir", "", "automatically receive phone Share files into this directory")
 	flags.StringVar(&options.stateDir, "state-dir", "build/pairing", "private pairing state directory")
@@ -74,11 +79,25 @@ func parsePairOptions(args []string) (pairOptions, error) {
 	flags.BoolVar(&options.fileAccess, "file-access", false, "request phone file access for commands on the active session")
 	flags.BoolVar(&options.mirror, "mirror-native", false, "experimental native video-only H.264 preview using ffplay")
 	flags.BoolVar(&options.persistent, "persistent", false, "keep the authorized session running until stopped or disconnected")
+	flags.BoolVar(&options.wifiDirect, "wifi-direct", false, "reuse the installed vivo-connect-p2p persistent system service (quit its other backend first)")
+	flags.StringVar(&region, "region", "overseas", "phone edition: overseas (India Office Kit) or china (mainland vivo mutual transfer)")
+	flags.BoolVar(&options.remember, "remember", false, "remember this explicitly authorized phone for automatic reconnection")
+	flags.BoolVar(&options.bluetoothPower, "bluetooth-power-on", false, "enable the paired Bluetooth adapter for this preconnection attempt")
+	flags.BoolVar(&options.resume, "resume", false, "reconnect the last remembered phone without creating a QR")
+	flags.BoolVar(&options.forget, "forget-remembered", false, "remove remembered phone authorization and exit")
 	if err := flags.Parse(args); err != nil {
 		return options, err
 	}
 	if flags.NArg() != 0 {
 		return options, errors.New("pair takes flags only")
+	}
+	var regionErr error
+	options.region, regionErr = vivo.ParseRegion(region)
+	if regionErr != nil {
+		return options, regionErr
+	}
+	if options.wifiDirect && options.localIP != "" {
+		return options, errors.New("--wifi-direct selects its local address from the persistent service; omit --local-ip")
 	}
 	if options.duration <= 0 || options.duration > 24*time.Hour {
 		return options, errors.New("duration must be greater than zero and at most 24h")
@@ -169,7 +188,7 @@ func writeQR(ctx context.Context, uri, path string) error {
 	return nil
 }
 
-func runPair(ctx context.Context, args []string) error {
+func runPair(ctx context.Context, args []string) (resultErr error) {
 	options, err := parsePairOptions(args)
 	if errors.Is(err, flag.ErrHelp) {
 		return nil
@@ -177,7 +196,57 @@ func runPair(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	if _, err := exec.LookPath("qrencode"); err != nil {
+	callerContext := ctx
+	defer func() {
+		if options.resume && resultErr != nil && callerContext.Err() == nil {
+			code := "retry"
+			if errors.Is(resultErr, errPairingRequired) || vivo.NeedsPairing(resultErr) {
+				code = "pairing_required"
+			}
+			if errors.Is(resultErr, errLoginRequired) {
+				code = "login_required"
+			}
+			if errors.Is(resultErr, errBluetoothRequired) {
+				code = "bluetooth_required"
+			}
+			json.NewEncoder(os.Stdout).Encode(vivo.Event{Time: time.Now().UTC(), Stage: "reconnect_failed", Code: code})
+		} else if options.wifiDirect && resultErr != nil && callerContext.Err() == nil {
+			code := "wifi_direct_failed"
+			if errors.Is(resultErr, errDirectPortBusy) {
+				code = "wifi_direct_backend_busy"
+			}
+			json.NewEncoder(os.Stdout).Encode(vivo.Event{Time: time.Now().UTC(), Stage: "pairing_failed", Code: code})
+		}
+	}()
+	if options.forget {
+		if err := forgetRemembered(options.stateDir); err != nil {
+			return err
+		}
+		return printJSON(map[string]bool{"forgotten": true})
+	}
+	var saved rememberedPhone
+	if options.resume {
+		if _, err := vivo.LoadIdentity(options.stateDir); err != nil {
+			return errPairingRequired
+		}
+		saved, err = readRemembered(options.stateDir)
+		if err != nil || saved.Region != options.region || saved.Direct != options.wifiDirect || (options.phone.IsValid() && saved.PhoneIP != options.phone.String()) {
+			return errPairingRequired
+		}
+		if options.pin != "" && (saved.FirstUse || options.pin != saved.Pin) {
+			return errPairingRequired
+		}
+		options.trustScanned, options.pin = saved.FirstUse, saved.Pin
+		if options.wifiDirect {
+			if _, err := loadAccount(options.stateDir); err != nil {
+				return err
+			}
+		}
+		if !options.wifiDirect {
+			options.localIP = saved.LocalIP
+		}
+	}
+	if _, err := exec.LookPath("qrencode"); err != nil && !options.resume {
 		return errors.New("install qrencode before starting native QR pairing")
 	}
 	if options.mirror {
@@ -200,7 +269,19 @@ func runPair(ctx context.Context, args []string) error {
 		}
 		defer bridge.Close()
 	}
-	if options.localIP == "" {
+	var direct *directBroker
+	if options.wifiDirect {
+		direct, err = startDirectBroker()
+		if err != nil {
+			return err
+		}
+		defer direct.Close()
+		network, err := direct.waitNetwork(ctx)
+		if err != nil {
+			return err
+		}
+		options.localIP = network.IP
+	} else if options.localIP == "" {
 		options.localIP, err = localLANIP()
 		if err != nil {
 			return err
@@ -218,9 +299,40 @@ func runPair(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	cloud, err := vivo.NewRendezvous(vivo.IndiaGateway, id, nil)
-	if err != nil {
-		return err
+	session.Region = options.region
+	var preconnectedAddress netip.Addr
+	var reconnectPeer *preconnectPeer
+	finishReconnect := func() {}
+	if options.resume {
+		if _, err := rememberedSession(saved, session); err != nil {
+			return err
+		}
+		if direct != nil {
+			account, err := loadAccount(options.stateDir)
+			if err != nil {
+				return err
+			}
+			direct.mu.Lock()
+			network := direct.network
+			direct.mu.Unlock()
+			preconnectedAddress, reconnectPeer, finishReconnect, err = defaultPreconnector().connect(ctx, account, saved, session, network, options.bluetoothPower, direct.authorizeAutomatic)
+			if err != nil {
+				return err
+			}
+			defer finishReconnect()
+			direct.mu.Lock()
+			live := direct.network.ID == network.ID && time.Now().Before(direct.lease) && !direct.closed
+			direct.mu.Unlock()
+			if !live {
+				return errors.New("Wi-Fi Direct group changed during Bluetooth preconnection")
+			}
+		} else if !rememberedLANAvailable(saved) {
+			return errors.New("waiting for the remembered local network")
+		}
+	} else if options.remember {
+		if err := forgetRemembered(options.stateDir); err != nil {
+			return err
+		}
 	}
 	dir, err := os.MkdirTemp(options.stateDir, "scan-")
 	if err != nil {
@@ -249,24 +361,48 @@ func runPair(ctx context.Context, args []string) error {
 	}
 	stage := func(name string) { emit(vivo.Event{Time: time.Now().UTC(), Stage: name}) }
 	fmt.Fprintln(os.Stderr, "Native QR pairing test. Event log:", filepath.Join(dir, "events.jsonl"))
-	if err := cloud.Begin(ctx, session); err != nil {
-		return err
+	var cloud *vivo.Rendezvous
+	var uri string
+	if options.resume {
+		stage("reconnect_attempt")
+	} else if direct != nil {
+		uri, err = direct.begin(session)
+	} else {
+		cloud, err = vivo.NewRendezvous(options.region.Gateway(), id, nil)
+		if err == nil {
+			err = cloud.Begin(ctx, session)
+		}
+		if err == nil {
+			uri, err = session.QR(options.region.Gateway())
+		}
 	}
-	uri, err := session.QR(vivo.IndiaGateway)
 	if err != nil {
 		return err
 	}
-	qrPath := filepath.Join(dir, "qr.png")
-	if err := writeQR(ctx, uri, qrPath); err != nil {
-		return err
-	}
-	defer os.Remove(qrPath) // Pairing tokens are not retained after this attempt.
-	fmt.Fprintln(os.Stderr, "Scan this image using the phone's Office Kit scanner:", qrPath)
-	fmt.Fprintln(os.Stderr, "QR expires:", session.ExpiresAt.Format(time.RFC3339))
-	emit(vivo.Event{Time: time.Now().UTC(), Stage: "qr_ready", QRPath: qrPath})
-	peer, err := cloud.Wait(ctx, session)
-	if err != nil {
-		return err
+	var peer vivo.Peer
+	if options.resume {
+		address, _ := netip.ParseAddr(saved.PhoneIP)
+		if preconnectedAddress.IsValid() {
+			address = preconnectedAddress
+		}
+		peer = vivo.Peer{Addresses: []netip.Addr{address}}
+	} else {
+		qrPath := filepath.Join(dir, "qr.png")
+		if err := writeQR(ctx, uri, qrPath); err != nil {
+			return err
+		}
+		defer os.Remove(qrPath) // Pairing tokens are not retained after this attempt.
+		fmt.Fprintln(os.Stderr, "Scan this image using the phone's Office Kit scanner:", qrPath)
+		fmt.Fprintln(os.Stderr, "QR expires:", session.ExpiresAt.Format(time.RFC3339))
+		emit(vivo.Event{Time: time.Now().UTC(), Stage: "qr_ready", QRPath: qrPath})
+		if direct != nil {
+			peer, err = direct.waitPeer(ctx)
+		} else {
+			peer, err = cloud.Wait(ctx, session)
+		}
+		if err != nil {
+			return err
+		}
 	}
 	if peer.ConnectionID != "" {
 		session.ConnectionID = peer.ConnectionID
@@ -299,6 +435,10 @@ func runPair(ctx context.Context, args []string) error {
 			stage("scanned_phone_certificate_pinned")
 		}
 		if err == nil {
+			if options.resume && !saved.samePhone(session) {
+				candidate.Close()
+				return errPairingRequired
+			}
 			client = candidate
 			phoneAddress = address
 			break
@@ -444,6 +584,16 @@ func runPair(ctx context.Context, args []string) error {
 	}
 	features.Connected = func() {
 		connected.Store(true)
+		finishReconnect()
+		if options.remember || options.resume {
+			record := rememberedPhone{Version: 1, PCID: session.Identity.DeviceID, PhoneIP: phoneAddress.String(), LocalIP: options.localIP,
+				Token: session.Token, DeviceID: session.PhoneDeviceID, BleID: session.PhoneBleID, Region: options.region, Direct: options.wifiDirect, FirstUse: options.trustScanned, Pin: options.pin, DeviceName: session.DeviceName, Preconnect: reconnectPeer}
+			if saveRemembered(options.stateDir, record) != nil {
+				stage("reconnect_unavailable")
+			} else {
+				stage("phone_remembered")
+			}
+		}
 		if options.notifications {
 			if bridge.Notify(testCtx, "connected") != nil {
 				stage("notification_unavailable")

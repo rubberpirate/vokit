@@ -1,8 +1,18 @@
 [Desktop Entry]
 Type=Application
 Name=Send to phone with VOkit
+Name[zh_CN]=通过 VOkit 发送到手机
+Name[es]=Enviar al teléfono con VOkit
+Name[fr]=Envoyer au téléphone avec VOkit
+Name[de]=Mit VOkit an das Telefon senden
+Name[ja]=VOkitでスマートフォンに送信
 Comment=Send selected files to the connected vivo phone
+Comment[zh_CN]=将所选文件发送到已连接的 vivo 手机
+Comment[es]=Enviar los archivos seleccionados al teléfono vivo conectado
+Comment[fr]=Envoyer les fichiers sélectionnés au téléphone vivo connecté
+Comment[de]=Ausgewählte Dateien an das verbundene vivo-Telefon senden
+Comment[ja]=選択したファイルを接続中のvivoスマートフォンに送信
 Exec=vokit %F
 TryExec=vokit
-Icon=phone-symbolic
+Icon=io.github.vivolinux.OfficeKit
 Terminal=false

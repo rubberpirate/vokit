@@ -1,4 +1,5 @@
 """Native GTK media surfaces and the bounded private media socket transport."""
+from .i18n import gettext as _
 import collections
 import fcntl
 import json
@@ -40,7 +41,7 @@ class FramedRecords:
             kind, size = struct.unpack_from('!BI', self.buffer)
             limit = {1: 65536, 2: RECORD_LIMIT, 3: 65536, 4: 524288}.get(kind, -1)
             if size > limit:
-                raise ValueError('Invalid phone media response.')
+                raise ValueError(_('Invalid phone media response.'))
             if len(self.buffer) < size + 5:
                 break
             records.append((kind, bytes(self.buffer[5:5 + size])))
@@ -64,7 +65,7 @@ def _push(source, data):
     buffer.fill(0, data)
     result = source.emit('push-buffer', buffer)
     if result not in (Gst.FlowReturn.OK, Gst.FlowReturn.FLUSHING):
-        raise RuntimeError('Cannot decode phone media.')
+        raise RuntimeError(_('Cannot decode phone media.'))
 
 
 def _appsrc(source, caps):
@@ -122,7 +123,7 @@ class VideoPipeline:
             caps = event.parse_caps().get_structure(0)
             width, height = caps.get_value('width'), caps.get_value('height')
             if width <= 0 or height <= 0 or width > 4096 or height > 4096 or width * height > 16 * 1024 * 1024:
-                GLib.idle_add(self.status, 'Phone video dimensions are unsupported.')
+                GLib.idle_add(self.status, _('Phone video dimensions are unsupported.'))
                 return Gst.PadProbeReturn.DROP
             self.geometry = (width, height)
             if self.geometry_changed:
@@ -168,13 +169,13 @@ class VideoPipeline:
             return
         if self.webcam and (message.src == self.webcam or message.src.has_as_ancestor(self.webcam)):
             self.set_webcam('')
-            self.status('Camera live · webcam device unavailable')
+            self.status(_('Camera live · webcam device unavailable'))
         else:
-            self.status('Cannot decode phone video. Stop and retry.')
+            self.status(_('Cannot decode phone video. Stop and retry.'))
 
     def push(self, body):
         if self.source.get_property('current-level-bytes') > 8 * 1024 * 1024:
-            raise RuntimeError('Phone video decoder is overloaded. Stop and retry.')
+            raise RuntimeError(_('Phone video decoder is overloaded. Stop and retry.'))
         _push(self.source, body)
 
     def set_preview(self, visible):
@@ -190,13 +191,13 @@ class VideoPipeline:
         if not path:
             return
         if not re.fullmatch(r'/dev/video[0-9]{1,3}', path):
-            raise ValueError('Choose a /dev/video webcam loopback device.')
+            raise ValueError(_('Choose a /dev/video webcam loopback device.'))
         fd = os.open(path, os.O_WRONLY | os.O_NONBLOCK | os.O_CLOEXEC | os.O_NOFOLLOW)
         try:
             capability = bytearray(104)
             fcntl.ioctl(fd, 0x80685600, capability)
             if bytes(capability[:16]).split(b'\0')[0] not in (b'v4l2loopback', b'v4l2 loopback'):
-                raise ValueError('The webcam device is not a virtual loopback camera.')
+                raise ValueError(_('The webcam device is not a virtual loopback camera.'))
         finally:
             os.close(fd)
         branch = Gst.parse_bin_from_description(
@@ -209,7 +210,7 @@ class VideoPipeline:
         if pad.link(branch.get_static_pad('sink')) != Gst.PadLinkReturn.OK:
             self.tee.release_request_pad(pad)
             self.pipeline.remove(branch)
-            raise RuntimeError('Cannot connect the virtual webcam.')
+            raise RuntimeError(_('Cannot connect the virtual webcam.'))
         self.webcam, self.webcam_pad = branch, pad
         branch.sync_state_with_parent()
 
@@ -228,7 +229,7 @@ class PhoneAudio:
         self.closed = threading.Event()
         self.pcm = queue.Queue(maxsize=4)
         self.processes = []
-        self.status = 'Waiting for phone microphone audio…'
+        self.status = _('Waiting for phone microphone audio…')
         self.active = False
         self.pipeline = Gst.parse_launch(
             'appsrc name=source ! aacparse ! avdec_aac ! audioconvert ! audioresample ! '
@@ -258,10 +259,10 @@ class PhoneAudio:
         while offset < len(data):
             part = data[offset:]
             if len(part) < 7 or part[0] != 255 or part[1] & 0xf6 != 0xf0 or (part[2] >> 2) & 15 >= 13:
-                raise ValueError('Phone microphone audio is unavailable.')
+                raise ValueError(_('Phone microphone audio is unavailable.'))
             size = ((part[3] & 3) << 11) | (part[4] << 3) | (part[5] >> 5)
             if size <= (7 if part[1] & 1 else 9) or size > len(part):
-                raise ValueError('Phone microphone audio is unavailable.')
+                raise ValueError(_('Phone microphone audio is unavailable.'))
             offset += size
         if data:
             _push(self.source, data)
@@ -276,22 +277,22 @@ class PhoneAudio:
                 if not self.processes:
                     loop, cat = shutil.which('pw-loopback'), shutil.which('pw-cat')
                     if not loop or not cat:
-                        raise RuntimeError('Install PipeWire tools to share phone microphone audio.')
+                        raise RuntimeError(_('Install PipeWire tools to share phone microphone audio.'))
                     name = 'vivo-phone-' + uuid.uuid4().hex
                     process = subprocess.Popen([loop, '-n', name, '-c', '1', '-m', 'MONO', '-l', '10',
                         '-i', '{ node.name = ' + name + '-input node.description = "Vivo Phone Microphone Input" media.class = Audio/Sink node.virtual = true node.autoconnect = false }',
                         '-o', '{ node.name = ' + name + '-source node.description = "Vivo Phone Microphone" media.class = Audio/Source node.virtual = true node.autoconnect = false }'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                     self.processes.append(process)
                     if self.closed.wait(.2) or process.poll() is not None:
-                        raise RuntimeError('Cannot create the PipeWire microphone source.')
+                        raise RuntimeError(_('Cannot create the PipeWire microphone source.'))
                     feed = subprocess.Popen([cat, '--playback', '--raw', '--target', name + '-input', '--rate', '48000', '--channels', '1', '--format', 's16', '--latency', '20ms', '-'], stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, bufsize=0)
                     self.processes.append(feed)
                     os.set_blocking(feed.stdin.fileno(), False)
                     self.active = True
-                    self.status = 'Microphone: Vivo Phone Microphone'
+                    self.status = _('Microphone: Vivo Phone Microphone')
                 feed = self.processes[-1]
                 if feed.poll() is not None:
-                    raise RuntimeError('Phone microphone audio is unavailable.')
+                    raise RuntimeError(_('Phone microphone audio is unavailable.'))
                 if select.select([], [feed.stdin], [], .02)[1]:
                     # Keep latency bounded; discard unwritten audio rather than queueing seconds.
                     os.write(feed.stdin.fileno(), data)
@@ -350,7 +351,7 @@ class MediaSession:
                 self.outgoing.append((data, move))
             else:
                 self.closed.set()
-                self._status('Phone input is overloaded. Stop and retry.', True)
+                self._status(_('Phone input is overloaded. Stop and retry.'), True)
 
     def _status(self, text, error=False):
         if self.error and not error:
@@ -365,11 +366,11 @@ class MediaSession:
         return False
 
     def _live_status(self):
-        text = 'Live'
+        text = _('Live')
         if self.microphone:
-            text += ' · ' + (self.audio.status if self.audio else 'Phone microphone unavailable on this connection.')
+            text += ' · ' + (self.audio.status if self.audio else _('Phone microphone unavailable on this connection.'))
             if self.audio and not self.audio.active and time.monotonic() - self.started > 10:
-                text = 'Live · No microphone audio received from the phone. Webcam sharing continues.'
+                text = _('Live · No microphone audio received from the phone. Webcam sharing continues.')
         self._status(text)
 
     def _run(self):
@@ -382,7 +383,7 @@ class MediaSession:
             sock.connect(str(self.backend.media_socket))
             sock.sendall(json.dumps(self.init, separators=(',', ':')).encode() + b'\n')
             sock.settimeout(.05)
-            self._status('Waiting for phone permission and video…')
+            self._status(_('Waiting for phone permission and video…'))
             parser = FramedRecords()
             quality_sent = False
             last_data = time.monotonic()
@@ -391,7 +392,7 @@ class MediaSession:
                 with self.lock:
                     outgoing = list(self.outgoing)
                     self.outgoing.clear()
-                for data, _ in outgoing:
+                for data, coalescible in outgoing:
                     sock.sendall(data)
                 try:
                     data = sock.recv(65536)
@@ -399,7 +400,7 @@ class MediaSession:
                     if video:
                         self._live_status()
                     if time.monotonic() - last_data > 60:
-                        raise RuntimeError('Phone video timed out. Stop and retry.')
+                        raise RuntimeError(_('Phone video timed out. Stop and retry.'))
                     continue
                 if not data:
                     break
@@ -419,7 +420,7 @@ class MediaSession:
                     else:
                         info = json.loads(body)
                         if not isinstance(info, dict):
-                            raise ValueError('Invalid phone media response.')
+                            raise ValueError(_('Invalid phone media response.'))
                         if kind == 1:
                             if info.get('microphone_available') is False and self.audio:
                                 self.audio.close()
@@ -430,17 +431,17 @@ class MediaSession:
                         if info.get('error'):
                             self._status(str(info['error'])[:240], True)
                         elif 'denied' in str(info.get('stage', '')):
-                            self._status('Phone permission denied. Approve it on the phone and retry.', True)
+                            self._status(_('Phone permission denied. Approve it on the phone and retry.'), True)
                         elif any(word in str(info.get('stage', '')) for word in ('error', 'failed')):
-                            self._status('Phone media stopped. Check the phone and retry.', True)
+                            self._status(_('Phone media stopped. Check the phone and retry.'), True)
                         elif info.get('stage') == 'permission_wait':
-                            self._status('Approve screen or camera access on the phone.')
+                            self._status(_('Approve screen or camera access on the phone.'))
                         elif info.get('stage') == 'starting':
-                            self._status('Starting phone video…')
-            self._status('Preview stopped.' if self.closed.is_set() else 'Phone media disconnected.')
+                            self._status(_('Starting phone video…'))
+            self._status(_('Preview stopped.') if self.closed.is_set() else _('Phone media disconnected.'))
         except (OSError, ValueError, RuntimeError, GLib.Error) as error:
             if not self.closed.is_set():
-                self._status(str(error)[:240] if isinstance(error, (ValueError, RuntimeError)) else 'Phone media service unavailable. Reconnect and retry.', True)
+                self._status(str(error)[:240] if isinstance(error, (ValueError, RuntimeError)) else _('Phone media service unavailable. Reconnect and retry.'), True)
         finally:
             self.closed.set()
             if self.sock:
@@ -498,53 +499,53 @@ class MediaPanel(Gtk.Box):
         self.picture = picture_type(can_shrink=True, content_fit=Gtk.ContentFit.CONTAIN, hexpand=True, vexpand=True)
         self.geometry_changed = None
         self.picture.set_focusable(mode == 'screen')
-        self.picture.update_property([Gtk.AccessibleProperty.LABEL], ['Live phone screen. Tap, swipe or type.' if mode == 'screen' else 'Live phone camera'])
+        self.picture.update_property([Gtk.AccessibleProperty.LABEL], [_('Live phone screen. Tap, swipe or type.') if mode == 'screen' else _('Live phone camera')])
         self.frame = Gtk.AspectFrame(ratio=720 / 1560 if mode == 'screen' else 16 / 9, obey_child=False, hexpand=True, vexpand=True)
         self.frame.set_child(self.picture)
         self.frame.add_css_class('phone-screen' if mode == 'screen' else 'camera-preview')
         self.frame.set_overflow(Gtk.Overflow.HIDDEN)
-        self.status = Gtk.Label(label='Connect the phone to start.', xalign=0, wrap=True)
+        self.status = Gtk.Label(label=_('Connect the phone to start.'), xalign=0, wrap=True)
         self.status.add_css_class('dim-label')
         self.status.add_css_class('caption')
         if mode == 'camera':
             row = Gtk.Box(spacing=8)
-            self.source = Gtk.DropDown.new_from_strings(['Rear camera', 'Front camera'])
+            self.source = Gtk.DropDown.new_from_strings([_('Rear camera'), _('Front camera')])
             self.source.set_hexpand(True)
             self.source.connect('notify::selected', self._source_changed)
             row.append(self.source)
-            self.start_button = Gtk.Button(label='Start camera')
+            self.start_button = Gtk.Button(label=_('Start camera'))
             self.start_button.add_css_class('suggested-action')
             self.start_button.connect('clicked', lambda *_: self.start())
             row.append(self.start_button)
-            self.stop_button = Gtk.Button(label='Stop')
+            self.stop_button = Gtk.Button(label=_('Stop'))
             self.stop_button.connect('clicked', lambda *_: self.stop())
             row.append(self.stop_button)
             self.append(row)
             quality_row = Gtk.Box(spacing=8)
-            quality_row.append(Gtk.Label(label='Camera quality', xalign=0, hexpand=True))
-            self.quality = Gtk.DropDown.new_from_strings(['720p · Low latency', '1080p'])
+            quality_row.append(Gtk.Label(label=_('Camera quality'), xalign=0, hexpand=True))
+            self.quality = Gtk.DropDown.new_from_strings([_('720p · Low latency'), '1080p'])
             quality_row.append(self.quality)
             self.append(quality_row)
         self.append(self.frame)
         if mode == 'camera':
-            self.preview_toggle = Gtk.CheckButton(label='Show camera preview', active=True)
+            self.preview_toggle = Gtk.CheckButton(label=_('Show camera preview'), active=True)
             self.preview_toggle.connect('toggled', self._preview_changed)
             self.append(self.preview_toggle)
             row = Gtk.Box(spacing=8)
-            self.webcam = Gtk.CheckButton(label='Use as webcam')
+            self.webcam = Gtk.CheckButton(label=_('Use as webcam'))
             self.webcam.connect('toggled', self._webcam_changed)
             row.append(self.webcam)
             self.device = Gtk.Entry(text='/dev/video10', hexpand=True)
-            self.device.set_tooltip_text('Virtual webcam output device')
+            self.device.set_tooltip_text(_('Virtual webcam output device'))
             row.append(self.device)
             self.append(row)
-            self.microphone = Gtk.CheckButton(label='Share phone microphone')
-            self.microphone.set_tooltip_text('Creates Vivo Phone Microphone only when the phone supplies microphone audio.')
+            self.microphone = Gtk.CheckButton(label=_('Share phone microphone'))
+            self.microphone.set_tooltip_text(_('Creates Vivo Phone Microphone only when the phone supplies microphone audio.'))
             self.append(self.microphone)
         else:
             self._input_controllers()
             row = Gtk.Box(homogeneous=True, spacing=12)
-            for icon, label, code in [('view-list-symbolic', 'Recents', 187), ('go-home-symbolic', 'Home', 3), ('go-previous-symbolic', 'Back', 4)]:
+            for icon, label, code in [('view-list-symbolic', _('Recents'), 187), ('go-home-symbolic', _('Home'), 3), ('go-previous-symbolic', _('Back'), 4)]:
                 row.append(_button(icon, label, lambda button, key=code: self._navigate(key)))
             self.append(row)
         self.append(self.status)
@@ -552,7 +553,7 @@ class MediaPanel(Gtk.Box):
 
     def _set_status(self, text):
         self.status.set_text(text)
-        self.status.set_visible(self.mode != 'screen' or text != 'Live')
+        self.status.set_visible(self.mode != 'screen' or text != _('Live'))
         self.status.set_tooltip_text(text)
         self._update_controls()
         return False
@@ -578,7 +579,7 @@ class MediaPanel(Gtk.Box):
         try:
             self.decoder = VideoPipeline(self.picture, self._set_status, self._geometry)
         except (GLib.Error, RuntimeError) as error:
-            self._set_status('Video decoder unavailable. Install the GStreamer H.264 and GTK plugins.')
+            self._set_status(_('Video decoder unavailable. Install the GStreamer H.264 and GTK plugins.'))
             return
         camera = self.mode == 'camera'
         if camera:
@@ -599,7 +600,7 @@ class MediaPanel(Gtk.Box):
             self.session = None
         self.decoder = None
         self.picture.set_paintable(None)
-        self._set_status('Preview stopped.' if self.connected else 'Connect the phone to start.')
+        self._set_status(_('Preview stopped.') if self.connected else _('Connect the phone to start.'))
         self._update_controls()
 
     def _session_status(self, session, text):
@@ -621,12 +622,12 @@ class MediaPanel(Gtk.Box):
         if self.decoder:
             self.decoder.set_preview(visible)
 
-    def _webcam_changed(self, *_):
+    def _webcam_changed(self, *_args):
         if self.decoder:
             try:
                 self.decoder.set_webcam(self.device.get_text() if self.webcam.get_active() else '')
             except (OSError, ValueError, RuntimeError, GLib.Error):
-                self._set_status('Camera live · webcam device unavailable. Choose a v4l2loopback device.')
+                self._set_status(_('Camera live · webcam device unavailable. Choose a v4l2loopback device.'))
         self._update_controls()
 
     def set_quality(self, quality):
@@ -728,7 +729,7 @@ class MediaPanel(Gtk.Box):
 
 class MirrorWindow(Adw.Window):
     def __init__(self, app, backend):
-        super().__init__(application=app, title='Phone mirror', resizable=False)
+        super().__init__(application=app, title=_('Phone mirror'), resizable=False)
         self.set_size_request(0, 0)
         self.panel = MediaPanel(backend, mode='screen')
         self.panel.geometry_changed = self._fit_phone
@@ -754,18 +755,18 @@ class MirrorWindow(Adw.Window):
             self.panel.set_quality(value.get_string())
         quality_action.connect('activate', quality_changed)
         self.actions.add_action(quality_action)
-        for label, value in [('480p', '480p'), ('720p', '720p'), ('1080p', '1080p'), ('Phone automatic', 'auto')]:
+        for label, value in [('480p', '480p'), ('720p', '720p'), ('1080p', '1080p'), (_('Phone automatic'), 'auto')]:
             item = Gio.MenuItem.new(label, None)
             item.set_action_and_target_value('mirror.quality', GLib.Variant('s', value))
             quality_menu.append_item(item)
-        menu.append_submenu('Screen quality', quality_menu)
-        for name, label, callback in [('start', 'Start mirroring', self.start), ('stop', 'Stop mirroring', self.stop)]:
+        menu.append_submenu(_('Screen quality'), quality_menu)
+        for name, label, callback in [('start', _('Start mirroring'), self.start), ('stop', _('Stop mirroring'), self.stop)]:
             action = Gio.SimpleAction.new(name, None)
             action.connect('activate', lambda action, parameter, fn=callback: fn())
             self.actions.add_action(action)
             menu.append(label, 'mirror.' + name)
         self.insert_action_group('mirror', self.actions)
-        button = Gtk.MenuButton(icon_name='view-more-symbolic', menu_model=menu, tooltip_text='Mirror settings')
+        button = Gtk.MenuButton(icon_name='view-more-symbolic', menu_model=menu, tooltip_text=_('Mirror settings'))
         header.pack_end(button)
         toolbar.add_top_bar(header)
         toolbar.set_content(self.panel)
@@ -829,7 +830,7 @@ def release_stream(url):
 class MediaViewer(Adw.Window):
     """Memory-only images and seekable GStreamer HTTP video; no file cache."""
     def __init__(self, app, path, mime, on_close=None):
-        super().__init__(application=app, title='Media viewer', default_width=960, default_height=720)
+        super().__init__(application=app, title=_('Media viewer'), default_width=960, default_height=720)
         self.on_close = on_close
         self.closed = threading.Event()
         self.pipeline = None
@@ -838,13 +839,13 @@ class MediaViewer(Adw.Window):
         self.updating_seek = False
         self.streaming = valid_stream_url(path)
         if not self.streaming and not Path(path).is_file():
-            raise ValueError('Invalid media source')
+            raise ValueError(_('Invalid media source'))
         toolbar = Adw.ToolbarView()
         header = Adw.HeaderBar()
         toolbar.add_top_bar(header)
         self.media = Gtk.Picture(content_fit=Gtk.ContentFit.CONTAIN, can_shrink=True,
                                  hexpand=True, vexpand=True)
-        self.message = Gtk.Label(label='Opening media…', halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER)
+        self.message = Gtk.Label(label=_('Opening media…'), halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER)
         overlay = Gtk.Overlay(child=self.media)
         overlay.add_overlay(self.message)
         toolbar.set_content(overlay)
@@ -857,14 +858,14 @@ class MediaViewer(Adw.Window):
         else:
             self._start_video(path)
             controls = Gtk.Box(spacing=12, margin_start=16, margin_end=16, margin_top=10, margin_bottom=10)
-            self.play_button = Gtk.Button(icon_name='media-playback-pause-symbolic', tooltip_text='Play or pause')
+            self.play_button = Gtk.Button(icon_name='media-playback-pause-symbolic', tooltip_text=_('Play or pause'))
             self.play_button.connect('clicked', self._toggle_play)
             controls.append(self.play_button)
             self.seek = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 0, 1, .1)
             self.seek.set_hexpand(True)
             self.seek.set_draw_value(False)
             self.seek.set_sensitive(False)
-            self.seek.set_tooltip_text('Playback position')
+            self.seek.set_tooltip_text(_('Playback position'))
             self.seek.connect('value-changed', self._seek)
             controls.append(self.seek)
             self.time_label = Gtk.Label(label='0:00')
@@ -896,12 +897,12 @@ class MediaViewer(Adw.Window):
                         break
                     total += len(chunk)
                     if total > 32 * 1024 * 1024 or invalid:
-                        raise ValueError('Image exceeds preview limit')
+                        raise ValueError(_('Image exceeds preview limit'))
                     loader.write(chunk)
             loader.close()
             pixbuf = loader.get_pixbuf()
             if pixbuf is None or invalid:
-                raise ValueError('Unsupported image')
+                raise ValueError(_('Unsupported image'))
             def display():
                 if not self.closed.is_set():
                     self.media.set_paintable(Gdk.Texture.new_for_pixbuf(pixbuf))
@@ -913,7 +914,7 @@ class MediaViewer(Adw.Window):
                 loader.close()
             except GLib.Error:
                 pass
-            GLib.idle_add(self._error, 'This image could not be streamed. Check phone access and image format.')
+            GLib.idle_add(self._error, _('This image could not be streamed. Check phone access and image format.'))
 
     def _error(self, text):
         if not self.closed.is_set():
@@ -925,7 +926,7 @@ class MediaViewer(Adw.Window):
         self.pipeline = Gst.ElementFactory.make('playbin3')
         sink = Gst.ElementFactory.make('gtk4paintablesink')
         if not self.pipeline or not sink:
-            raise RuntimeError('GStreamer GTK video support is required')
+            raise RuntimeError(_('GStreamer GTK video support is required'))
         self.media.set_paintable(sink.get_property('paintable'))
         self.pipeline.set_property('video-sink', sink)
         # Explicitly disable GStreamer's download-to-disk mode.
@@ -941,7 +942,7 @@ class MediaViewer(Adw.Window):
         if self.closed.is_set():
             return
         if message.type == Gst.MessageType.ERROR:
-            self._error('This video could not be streamed. Check phone access and video format.')
+            self._error(_('This video could not be streamed. Check phone access and video format.'))
             self.pipeline.set_state(Gst.State.NULL)
         elif message.type == Gst.MessageType.ASYNC_DONE:
             self.message.set_visible(False)

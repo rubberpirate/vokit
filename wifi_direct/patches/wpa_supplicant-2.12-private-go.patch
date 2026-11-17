@@ -1,0 +1,123 @@
+--- a/src/drivers/driver_nl80211.c
++++ b/src/drivers/driver_nl80211.c
+@@ -2563,8 +2563,17 @@
+ 	struct i802_bss *bss;
+ 	char path[128], buf[200], *pos;
+ 	ssize_t len;
+ 	int ret;
++
++#ifdef CONFIG_VIVO_P2P_GROUP_ONLY
++	/* This project-local build must never attach to the campus station. */
++	if (os_strncmp(ifname, "p2p-vc-", 7) != 0 ||
++	    os_strlen(ifname) != 13) {
++		wpa_printf(MSG_ERROR, "VIVO: refusing a non-private interface");
++		return NULL;
++	}
++#endif /* CONFIG_VIVO_P2P_GROUP_ONLY */
+ 
+ 	ret = os_snprintf(path, sizeof(path), "/sys/class/net/%s/device/driver",
+ 			  ifname);
+ 	if (!os_snprintf_error(sizeof(path), ret)) {
+@@ -3493,8 +3502,16 @@
+ 
+ 	bss->ifindex = if_nametoindex(bss->ifname);
+ 	if (first)
+ 		drv->ifindex = bss->ifindex;
++
++#ifdef CONFIG_VIVO_P2P_GROUP_ONLY
++	if (nl80211_get_ifmode(bss) != NL80211_IFTYPE_P2P_GO) {
++		wpa_printf(MSG_ERROR, "VIVO: refusing a non-GO interface");
++		return -1;
++	}
++#endif /* CONFIG_VIVO_P2P_GROUP_ONLY */
++
+ 	bss->wdev_id = drv->global->if_add_wdevid;
+ 	bss->wdev_id_set = drv->global->if_add_wdevid_set;
+ 
+ 	/*
+@@ -3549,15 +3566,20 @@
+ 
+ 	if (first && nl80211_get_ifmode(bss) == NL80211_IFTYPE_STATION)
+ 		drv->start_mode_sta = 1;
+ 
++#ifdef CONFIG_VIVO_P2P_GROUP_ONLY
++	/* Preserve the allocated GO; do not momentarily allocate another STA. */
++	nlmode = NL80211_IFTYPE_P2P_GO;
++#else
+ 	if (drv->hostapd || bss->static_ap)
+ 		nlmode = NL80211_IFTYPE_AP;
+ 	else if (bss->if_dynamic ||
+ 		 nl80211_get_ifmode(bss) == NL80211_IFTYPE_MESH_POINT)
+ 		nlmode = nl80211_get_ifmode(bss);
+ 	else
+ 		nlmode = NL80211_IFTYPE_STATION;
++#endif /* CONFIG_VIVO_P2P_GROUP_ONLY */
+ 
+ 	if (first && wpa_driver_nl80211_set_mode(bss, nlmode) < 0) {
+ 		wpa_printf(MSG_ERROR, "nl80211: Could not configure driver mode");
+ 		return -1;
+@@ -8246,8 +8268,16 @@
+ 	int i;
+ 	int was_ap = is_ap_interface(drv->nlmode);
+ 	int res;
+ 	int mode_switch_res;
++
++#ifdef CONFIG_VIVO_P2P_GROUP_ONLY
++	/* AP teardown may request a STA reset. Delete the owned GO instead. */
++	if (nlmode != NL80211_IFTYPE_P2P_GO) {
++		wpa_printf(MSG_ERROR, "VIVO: refusing a non-GO mode switch");
++		return -1;
++	}
++#endif /* CONFIG_VIVO_P2P_GROUP_ONLY */
+ 
+ 	if (TEST_FAIL())
+ 		return -1;
+ 
+--- a/src/drivers/driver_nl80211_capa.c
++++ b/src/drivers/driver_nl80211_capa.c
+@@ -129,10 +129,13 @@
+ 		case NL80211_IFTYPE_ADHOC:
+ 			info->capa->flags |= WPA_DRIVER_FLAGS_IBSS;
+ 			break;
+ 		case NL80211_IFTYPE_P2P_DEVICE:
++#ifndef CONFIG_VIVO_P2P_GROUP_ONLY
+ 			info->capa->flags |=
+ 				WPA_DRIVER_FLAGS_DEDICATED_P2P_DEVICE;
++#endif /* CONFIG_VIVO_P2P_GROUP_ONLY */
++			/* The system supplicant owns the physical P2P Device. */
+ 			break;
+ 		case NL80211_IFTYPE_P2P_GO:
+ 			info->p2p_go_supported = 1;
+ 			break;
+--- a/wpa_supplicant/ctrl_iface.c
++++ b/wpa_supplicant/ctrl_iface.c
+@@ -13550,8 +13550,14 @@
+ 
+ 	os_memcpy(reply, "OK\n", 3);
+ 	reply_len = 3;
+ 
++#ifdef CONFIG_VIVO_P2P_GROUP_ONLY
++	if (os_strcmp(buf, "VIVO_P2P_GROUP_ONLY") == 0) {
++		reply_len = os_snprintf(reply, reply_size,
++					"vivo-p2p-group-only=1\n");
++	} else
++#endif /* CONFIG_VIVO_P2P_GROUP_ONLY */
+ 	if (os_strcmp(buf, "PING") == 0) {
+ 		os_memcpy(reply, "PONG\n", 5);
+ 		reply_len = 5;
+ 	} else if (os_strcmp(buf, "IFNAME") == 0) {
+@@ -15329,8 +15335,14 @@
+ 
+ 	os_memcpy(reply, "OK\n", 3);
+ 	reply_len = 3;
+ 
++#ifdef CONFIG_VIVO_P2P_GROUP_ONLY
++	if (os_strcmp(buf, "VIVO_P2P_GROUP_ONLY") == 0) {
++		reply_len = os_snprintf(reply, reply_size,
++					"vivo-p2p-group-only=1\n");
++	} else
++#endif /* CONFIG_VIVO_P2P_GROUP_ONLY */
+ 	if (os_strcmp(buf, "PING") == 0) {
+ 		os_memcpy(reply, "PONG\n", 5);
+ 		reply_len = 5;
+ 	} else if (os_strncmp(buf, "INTERFACE_ADD ", 14) == 0) {

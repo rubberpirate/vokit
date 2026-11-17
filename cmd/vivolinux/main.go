@@ -22,6 +22,7 @@ Usage:
   vivolinux pair [--trust-scanned-phone | --phone-cert-sha256 HEX] [--phone LAN_IP] [--duration 5m]
                  [--persistent] [--clipboard] [--notifications] [--file-access] [--receive-dir DIRECTORY]
                  [--list-files PHONE_DIRECTORY] [--mirror-native]
+                 [--remember] [--resume | --forget-remembered]
   vivolinux native-status [--socket PATH]
   vivolinux files [--path PHONE_DIRECTORY | --category recent|images|videos|audio|documents] [--page 0] [--socket PATH]
   vivolinux download --remote PHONE_FILE --output NEW_LOCAL_FILE [--page 0]
@@ -30,6 +31,9 @@ Usage:
   vivolinux stream --remote PHONE_MEDIA [--category images|videos --page 0]
   vivolinux preview --remote PHONE_MEDIA --output PRIVATE_CACHE_FILE
   vivolinux phone-certificate --phone LAN_IP
+  vivolinux account-login [--state-dir DIRECTORY]
+  vivolinux account-status [--state-dir DIRECTORY]
+  vivolinux account-logout [--state-dir DIRECTORY]
   vivolinux doctor
   vivolinux devices [--timeout 10s] [--via-service] [--socket PATH]
   vivolinux push --serial SERIAL [--timeout 2m] LOCAL ABSOLUTE_REMOTE
@@ -43,7 +47,9 @@ Flags must precede positional arguments. Doctor and device lists emit JSON.
 The daemon stays in the foreground. The GTK desktop owns its paired background session.
 ADB fallback commands require separately installed adb/scrcpy and authorized USB debugging.
 Pair discovers the phone from a fresh QR scan; --phone is an optional address filter.
-The QR bootstrap currently uses the India-region vivo rendezvous service.
+Pair --region china selects mainland vivo mutual transfer; --region overseas
+(default) selects India Office Kit. pair --wifi-direct
+reuses the installed vivo-connect-p2p.service; quit vivo Connect's backend first.
 Install qrencode; clipboard/notifications use make desktop's GTK helper. File commands
 use the active native session and phone permission. The GTK frontend uses GStreamer for preview.
 Push/pull explicitly write files and may overwrite existing files.
@@ -75,6 +81,7 @@ func run(ctx context.Context, args []string, runner android.Runner) error {
 		return nil
 	}
 	command := args[0]
+	if command=="account-login" || command=="account-status" || command=="account-logout" {return runAccount(ctx,command,args[1:])}
 	if command == "native-status" || command == "files" || command == "download" || command == "upload" || command == "thumbnail" || command == "preview" || command == "stream" {
 		return runNative(ctx, args)
 	}

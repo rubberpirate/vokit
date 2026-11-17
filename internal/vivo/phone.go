@@ -31,6 +31,14 @@ type PhoneClient struct {
 
 var errCertificatePinMismatch = errors.New("phone certificate changed; pinned certificate mismatch")
 
+var ErrPhoneAuthorization = errors.New("phone authorization or supported protocol changed; scan a fresh QR")
+
+func NeedsPairing(err error) bool {
+	var status *HTTPStatusError
+	return errors.Is(err, ErrPhoneAuthorization) || errors.Is(err, errCertificatePinMismatch) ||
+		(errors.As(err, &status) && (status.Status == 401 || status.Status == 403))
+}
+
 var ErrControlDisconnected = errors.New("phone closed the control transport; scan a fresh QR to reconnect")
 
 type certificateTrust struct {
@@ -149,6 +157,9 @@ func (p *PhoneClient) post(ctx context.Context, path string, s *Session, body an
 	}
 	if response.StatusCode == 445 || response.StatusCode == http.StatusForbidden {
 		response.Body.Close()
+		if path == "/version" || path == "/base-info" {
+			return ErrPhoneAuthorization
+		}
 		return ErrFilePermission
 	}
 	if target == nil {
@@ -159,7 +170,7 @@ func (p *PhoneClient) post(ctx context.Context, path string, s *Session, body an
 }
 
 func (p *PhoneClient) Negotiate(ctx context.Context, s *Session) (map[string]bool, error) {
-	version := map[string]any{"version": "7.0.6", "connBaseVersionCode": 1155, "pcSuiteVersionCode": 70007, "timestamp": time.Now().UnixMilli(), "connectionId": s.ConnectionID, "pcDeviceId": s.Identity.DeviceID, "isAutoConnect": false, "token": s.Token, "isOversea": true, "pcOsType": "linux", "pcOsVersion": runtime.GOOS + "/" + runtime.GOARCH}
+	version := map[string]any{"version": "7.0.6", "connBaseVersionCode": 1155, "pcSuiteVersionCode": 70007, "timestamp": time.Now().UnixMilli(), "connectionId": s.ConnectionID, "pcDeviceId": s.Identity.DeviceID, "isAutoConnect": s.AutoConnect, "token": s.Token, "isOversea": s.Region.Overseas(), "pcOsType": "linux", "pcOsVersion": runtime.GOOS + "/" + runtime.GOARCH}
 	var reply struct {
 		Code string `json:"code"`
 		Data struct {
@@ -172,12 +183,16 @@ func (p *PhoneClient) Negotiate(ctx context.Context, s *Session) (map[string]boo
 		return nil, fmt.Errorf("phone version: %w", err)
 	}
 	if reply.Code != "0000" {
-		return nil, errors.New("phone rejected version negotiation")
+		return nil, ErrPhoneAuthorization
 	}
 	if reply.Data.Suite < 70007 || reply.Data.Connbase < 1155 || reply.Data.ENP > 1 {
-		return nil, errors.New("phone component versions are incompatible with this protocol milestone")
+		return nil, ErrPhoneAuthorization
 	}
-	base := map[string]any{"pc_name": s.HostName, "pcDeviceId": s.Identity.DeviceID, "isLogin": false, "openid": "", "pcLoginAccount": "", "isAutoConnect": false, "pcSystemType": "1", "isSupVdfs": false, "token": s.Token, "isPcOsSupportExtScreen": false, "pcBleId": s.Identity.DeviceID, "deviceAvatarUri": ""}
+	bleID := s.Identity.DeviceID
+	if !s.Region.Overseas() {
+		bleID = ""
+	}
+	base := map[string]any{"pc_name": s.HostName, "pcDeviceId": s.Identity.DeviceID, "isLogin": s.AccountOpenID != "", "openid": s.AccountOpenID, "pcLoginAccount": "", "isAutoConnect": s.AutoConnect, "pcSystemType": "1", "isSupVdfs": false, "token": s.Token, "isPcOsSupportExtScreen": false, "pcBleId": bleID, "deviceAvatarUri": ""}
 	var info struct {
 		Code string                     `json:"code"`
 		Data map[string]json.RawMessage `json:"data"`
@@ -186,10 +201,17 @@ func (p *PhoneClient) Negotiate(ctx context.Context, s *Session) (map[string]boo
 		return nil, fmt.Errorf("phone base info: %w", err)
 	}
 	if info.Code != "0000" || info.Data == nil {
-		return nil, errors.New("phone rejected base-info negotiation")
+		return nil, ErrPhoneAuthorization
 	}
 	s.StorageRoot = ""
 	s.DeviceName = ""
+	s.PhoneDeviceID, s.PhoneBleID = "", ""
+	for key, target := range map[string]*string{"mobileDeviceId": &s.PhoneDeviceID, "phoneBleId": &s.PhoneBleID} {
+		var value string
+		if json.Unmarshal(info.Data[key], &value) == nil && len(value) <= 512 && !strings.ContainsAny(value, "\x00\r\n") && value != "0" {
+			*target = strings.TrimSpace(value)
+		}
+	}
 	var deviceName string
 	if json.Unmarshal(info.Data["mobileDeviceName"], &deviceName) == nil && len(deviceName) <= 256 && !strings.ContainsAny(deviceName, "\x00\r\n") {
 		s.DeviceName = strings.TrimSpace(deviceName)

@@ -1,6 +1,7 @@
 /artifacts/
 /bin/
 /build/
+/wifi_direct/build/
 *.exe
 *.pkg
 __pycache__/

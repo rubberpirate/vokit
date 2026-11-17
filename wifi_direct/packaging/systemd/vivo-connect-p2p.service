@@ -1,0 +1,37 @@
+[Unit]
+Description=vivo Connect private Wi-Fi Direct group
+After=NetworkManager.service
+
+[Service]
+Type=simple
+User=root
+Group=root
+ExecStart=/usr/bin/python3 -I /usr/local/lib/vivo-connect-p2p/tools/p2p_service.py
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=60
+KillMode=mixed
+UMask=0077
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin
+RuntimeDirectory=vivo-connect-p2p
+RuntimeDirectoryMode=0700
+StateDirectory=vivo-connect-p2p
+StateDirectoryMode=0700
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/run/vivo-connect-p2p /run/lock
+PrivateTmp=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK AF_PACKET
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_RAW CAP_NET_BIND_SERVICE CAP_SETUID CAP_SETGID CAP_DAC_READ_SEARCH CAP_KILL
+# dnsmasq drops UID; stopping that owned child requires CAP_KILL.
+# dnsmasq retains network capabilities while dropping from root to its service user.
+# NoNewPrivileges can otherwise leave CAP_SETUID out of the Python process's
+# permitted set even though it is present in the capability bounding set.
+AmbientCapabilities=CAP_SETUID
+
+[Install]
+WantedBy=multi-user.target

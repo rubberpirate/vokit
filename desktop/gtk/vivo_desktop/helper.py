@@ -1,4 +1,5 @@
 """Private JSON-pipe clipboard and notification helper; never logs contents."""
+from .i18n import gettext as _, N_
 import json
 import os
 import signal
@@ -14,7 +15,7 @@ from gi.repository import Gio, GLib
 
 TEXT_LIMIT = 64 * 1024
 LINE_LIMIT = 2 * 1024 * 1024
-MESSAGES = {"connected":"Phone connected.", "disconnected":"Phone disconnected.", "connecting":"Connecting to phone.", "files_received":"Files received from your phone."}
+MESSAGES = {"connected":N_('Phone connected.'), "disconnected":N_('Phone disconnected.'), "connecting":N_('Connecting to phone.'), "files_received":N_('Files received from your phone.')}
 
 
 def valid_text(value):
@@ -38,11 +39,11 @@ class Helper:
             from gi.repository import Gdk, Gtk
             Gtk.init()
             display = Gdk.Display.get_default()
-            if display is None: raise RuntimeError("Desktop display unavailable.")
+            if display is None: raise RuntimeError(_('Desktop display unavailable.'))
             self.clipboard = display.get_clipboard()
             self.clipboard.connect("changed", self.clipboard_changed)
-            if os.environ.get("WAYLAND_DISPLAY") and shutil.which("wl-paste"):
-                self.observer = subprocess.Popen([os.path.realpath(sys.argv[0]),"--watch-clipboard"],stdout=subprocess.PIPE,stdin=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+            if os.environ.get("WAYLAND_DISPLAY") and shutil.which('wl-paste'):
+                self.observer = subprocess.Popen([os.path.realpath(sys.argv[0]),'--watch-clipboard'],stdout=subprocess.PIPE,stdin=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
                 def watch():
                     while not self.stopping:
                         line=self.observer.stdout.readline(LINE_LIMIT+1)
@@ -50,7 +51,7 @@ class Helper:
                         try: value=json.loads(line)
                         except (ValueError,UnicodeError): return
                         GLib.idle_add(self.observed,value.get("text",""))
-                threading.Thread(target=watch,daemon=True,name="vivo-clipboard-watch").start()
+                threading.Thread(target=watch,daemon=True,name='vivo-clipboard-watch').start()
         Gio.bus_get(Gio.BusType.SESSION, None, self.bus_ready)
 
     def emit(self, value):
@@ -105,15 +106,15 @@ class Helper:
                 if phone_notification:
                     fields = [(value.get("app"), 256), (value.get("title"), 1024), (value.get("body"), 8192)]
                     valid = all(isinstance(text, str) and "\x00" not in text and len(text.encode("utf-8")) <= limit for text, limit in fields)
-                    title = " · ".join(text for text in (value.get("app"), value.get("title")) if isinstance(text, str) and text) or "Phone notification"
+                    title = " · ".join(text for text in (value.get("app"), value.get("title")) if isinstance(text, str) and text) or _('Phone notification')
                     body = GLib.markup_escape_text(value.get("body", "")) if valid else ""
                 else:
                     valid = state in MESSAGES
-                    title, body = "VOkit", MESSAGES.get(state, "")
+                    title, body = "VOkit", _(MESSAGES.get(state, ""))
                 if not self.bus or not valid:
                     self.acknowledge("notification",False,value)
                 else:
-                    parameters = GLib.Variant("(susssasa{sv}i)",("VOkit",0,"phone-symbolic",title,body,[],{"urgency":GLib.Variant("y",1)},4000))
+                    parameters = GLib.Variant("(susssasa{sv}i)",("VOkit",0,'phone-symbolic',title,body,[],{"urgency":GLib.Variant("y",1)},4000))
                     def completed(connection,result):
                         try: connection.call_finish(result); ok=True
                         except GLib.Error: ok=False
@@ -173,7 +174,7 @@ class Helper:
 
     def run(self):
         self.emit({"event":"ready"})
-        threading.Thread(target=self.read_stdin,daemon=True,name="vivo-helper-input").start()
+        threading.Thread(target=self.read_stdin,daemon=True,name='vivo-helper-input').start()
         GLib.unix_signal_add(GLib.PRIORITY_DEFAULT,signal.SIGTERM,self.stop)
         GLib.unix_signal_add(GLib.PRIORITY_DEFAULT,signal.SIGINT,self.stop)
         self.loop.run()
@@ -182,13 +183,13 @@ class Helper:
 
 def main(argv=None):
     args = sys.argv[1:] if argv is None else argv
-    if args==["--watch-clipboard"]:
+    if args==['--watch-clipboard']:
         # Keep Wayland data-control observation tied to the helper's lifetime.
         import ctypes
         ctypes.CDLL(None).prctl(1,signal.SIGTERM,0,0,0)
         if os.getppid()==1: return 1
-        os.execvp("wl-paste",["wl-paste","--type","text","--watch",os.path.realpath(sys.argv[0]),"--clipboard-event"])
-    if args==["--clipboard-event"]:
+        os.execvp('wl-paste',['wl-paste',"--type","text","--watch",os.path.realpath(sys.argv[0]),'--clipboard-event'])
+    if args==['--clipboard-event']:
         data=bytearray()
         if os.environ.get("CLIPBOARD_STATE")=="data":
             with selectors.DefaultSelector() as selector:
@@ -201,7 +202,7 @@ def main(argv=None):
         except UnicodeError: text=""
         print(json.dumps({"text":text if valid_text(text) else ""},ensure_ascii=True))
         return 0
-    if args not in ([],["--notifications-only"]): return 2
+    if args not in ([],['--notifications-only']): return 2
     try: return Helper(not args).run()
     except (RuntimeError, GLib.Error): return 1
 

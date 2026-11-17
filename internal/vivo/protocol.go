@@ -135,14 +135,19 @@ func LoadIdentity(dir string) (Identity, error) {
 }
 
 type Session struct {
-	Identity     Identity
-	HostName     string
-	Token        string
-	SID          string
-	ConnectionID string
-	StorageRoot  string `json:"-"`
-	DeviceName   string `json:"-"`
-	ExpiresAt    time.Time
+	Region        Region
+	Identity      Identity
+	HostName      string
+	Token         string
+	SID           string
+	ConnectionID  string
+	StorageRoot   string `json:"-"`
+	DeviceName    string `json:"-"`
+	PhoneDeviceID string `json:"-"`
+	PhoneBleID    string `json:"-"`
+	AutoConnect   bool   `json:"-"`
+	AccountOpenID string `json:"-"`
+	ExpiresAt     time.Time
 }
 
 func NewSession(identity Identity, hostname, localIP string) (*Session, error) {
@@ -182,7 +187,24 @@ func (s *Session) QR(base string) (string, error) {
 	}
 	q := url.Values{"s": {s.SID}, "f": {"pc"}, "t": {s.Token}, "u": {""}, "d": {name}, "mac": {""}, "ls": {"false"}, "pb": {"0"}, "id": {s.Identity.DeviceID}}
 	u.RawQuery = q.Encode()
-	return "pcsuite:" + strings.TrimPrefix(u.String(), "https://"), nil
+	return s.Region.qrURI(u.String()), nil
+}
+
+// DirectQR matches vivo Connect's immediate P2P branch. In particular, lip
+// must be absent: the phone joins the GO and calls gateway:9199 directly.
+func (s *Session) DirectQR(ssid, passphrase, bssid, gateway string) (string, error) {
+	if s.Token == "" || s.Identity.DeviceID == "" {
+		return "", errors.New("missing direct pairing session")
+	}
+	sid, err := randomHex(16)
+	if err != nil {
+		return "", err
+	}
+	s.SID = sid
+	s.ExpiresAt = time.Now().Add(180 * time.Second)
+	q := url.Values{"s": {sid}, "f": {"pc"}, "t": {s.Token}, "u": {""}, "d": {s.HostName}, "id": {s.Identity.DeviceID},
+		"ls": {"true"}, "we": {"true"}, "wid": {ssid}, "wpw": {passphrase}, "wm": {bssid}, "gw": {gateway}, "pb": {"0"}}
+	return s.Region.qrURI(s.Region.Gateway() + "?" + q.Encode()), nil
 }
 
 func EncryptPID(encodedKey, deviceID string) (string, error) {
